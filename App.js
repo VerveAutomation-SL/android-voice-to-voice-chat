@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import Voice from '@react-native-voice/voice';
 import {
   SafeAreaView,
@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
-  PermissionsAndroid,  
-  Platform,            
+  PermissionsAndroid,
+  Platform,
   Alert,
 } from 'react-native';
 
@@ -66,76 +66,104 @@ function App() {
     };
   }, [])
 
-  const handleMicPress = async () => {
-  const hasPermission = await requestMicPermission();
-  
-  if (!hasPermission) {
-    Alert.alert(
-      'Permission Required',
-      'Microphone permission is required for voice recognition',
-    );
-    return;
-  }
-  
-  setIsListening(!isListening);
-  console.log('Mic pressed - Permission granted');
+  //Start Listeing for Speech
+  const startListening = async () => {
+    const hasPermission = await requestMicPermission();
+
+    if (!hasPermission) {
+      Alert.alert(
+        'Permission Required',
+        'Microphone permission is required for voice recognition',
+      );
+      return;
+    }
+
+    try {
+      setTranscript('');
+      setError('');
+      setIsListening(true);
+      await Voice.start('hi-IN');
+    } catch (e) {
+      console.error('There was an erros in voice recognition: ', e);
+      setError('There was an error in initiaiting voice recognition');
+      setIsListening(false);
+    }
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Hindi Voice Bot</Text>
-        <View style={[
-          styles.statusBadge,
-          {backgroundColor: mqttStatus === 'Connected' ? '#00ff88' : '#ff4444'}
-        ]}>
-          <Text style={styles.statusText}>MQTT: {mqttStatus}</Text>
+  //Stop Listening for Speech
+  const stopListening = async () => {
+    try {
+      await Voice.stop();
+      setIsListening(false);
+    } catch (e) {
+      console.error('There was an error stopping voice recognition');
+    }
+  };
+
+  // Handle Mic Button Press
+const handleMicPress = async () => {
+  if (isListening) {
+    await stopListening();
+  } else {
+    await startListening();
+  }
+};
+
+return (
+  <SafeAreaView style={styles.container}>
+    <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
+
+    {/* Header */}
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Hindi Voice Bot</Text>
+      <View style={[
+        styles.statusBadge,
+        { backgroundColor: mqttStatus === 'Connected' ? '#00ff88' : '#ff4444' }
+      ]}>
+        <Text style={styles.statusText}>MQTT: {mqttStatus}</Text>
+      </View>
+    </View>
+
+    {/* Content */}
+    <ScrollView style={styles.content}>
+      {/* Transcript Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Your Speech (Hindi)</Text>
+        <View style={styles.textBox}>
+          <Text style={styles.textContent}>
+            {transcript || 'Tap the mic to start speaking...'}
+          </Text>
         </View>
       </View>
 
-      {/* Content */}
-      <ScrollView style={styles.content}>
-        {/* Transcript Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Your Speech (Hindi)</Text>
-          <View style={styles.textBox}>
-            <Text style={styles.textContent}>
-              {transcript || 'Tap the mic to start speaking...'}
-            </Text>
-          </View>
+      {/* Reply Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Bot Reply</Text>
+        <View style={styles.textBox}>
+          <Text style={styles.textContent}>
+            {reply || 'Waiting for response...'}
+          </Text>
         </View>
-
-        {/* Reply Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Bot Reply</Text>
-          <View style={styles.textBox}>
-            <Text style={styles.textContent}>
-              {reply || 'Waiting for response...'}
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Mic Button */}
-      <View style={styles.micContainer}>
-        <TouchableOpacity
-          style={[
-            styles.micButton,
-            isListening && styles.micButtonActive
-          ]}
-          onPress={handleMicPress}
-          activeOpacity={0.7}>
-          <Text style={styles.micIcon}>🎤</Text>
-        </TouchableOpacity>
-        <Text style={styles.micLabel}>
-          {isListening ? 'Listening...' : 'Tap to Speak'}
-        </Text>
       </View>
-    </SafeAreaView>
-  );
+    </ScrollView>
+
+    {/* Mic Button */}
+    <View style={styles.micContainer}>
+      <TouchableOpacity
+        style={[
+          styles.micButton,
+          isListening && styles.micButtonActive
+        ]}
+        onPress={handleMicPress}
+        activeOpacity={0.7}>
+        <Text style={styles.micIcon}>🎤</Text>
+      </TouchableOpacity>
+      <Text style={styles.micLabel}>
+        {isListening ? 'Listening...' : 'Tap to Speak'}
+      </Text>
+    </View>
+  </SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
@@ -210,7 +238,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#00ff88',
-    shadowOffset: {width: 0, height: 4},
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,

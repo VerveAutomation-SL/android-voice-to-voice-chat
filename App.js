@@ -1,4 +1,5 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
+import Voice from '@react-native-voice/voice';
 import {
   SafeAreaView,
   StyleSheet,
@@ -40,6 +41,30 @@ function App() {
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
+  const [error, setError] = useState("");
+
+  //Voice Event Handlers
+  useEffect(() => {
+    Voice.onSpeechStart = (e) => {
+      console.log('Started Speaking', e);
+      setError('');
+    };
+
+    Voice.onSpeechEnd = (e) => {
+      console.log('Stopped Speaking', e);
+      setIsListening(false);
+    };
+
+    Voice.onSpeechError = (e) => {
+      console.log('Error in detecting speaking', e);
+      setError(e.error?.message || 'An error in detecting speech occured');
+      setIsListening(false);
+    }
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, [])
 
   const handleMicPress = async () => {
   const hasPermission = await requestMicPermission();

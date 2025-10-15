@@ -7,7 +7,33 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
+  PermissionsAndroid,  
+  Platform,            
+  Alert,
 } from 'react-native';
+
+// Request microphone permission
+const requestMicPermission = async () => {
+  if (Platform.OS === 'android') {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        {
+          title: 'Microphone Permission',
+          message: 'Hindi Voice Bot needs access to your microphone',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (err) {
+      console.warn(err);
+      return false;
+    }
+  }
+  return true;
+};
 
 function App() {
   const [isListening, setIsListening] = useState(false);
@@ -15,10 +41,19 @@ function App() {
   const [reply, setReply] = useState('');
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
 
-  const handleMicPress = () => {
-    setIsListening(!isListening);
-    // Voice recognition will be implemented later
-    console.log('Mic pressed');
+  const handleMicPress = async () => {
+  const hasPermission = await requestMicPermission();
+  
+  if (!hasPermission) {
+    Alert.alert(
+      'Permission Required',
+      'Microphone permission is required for voice recognition',
+    );
+    return;
+  }
+  
+  setIsListening(!isListening);
+  console.log('Mic pressed - Permission granted');
   };
 
   return (

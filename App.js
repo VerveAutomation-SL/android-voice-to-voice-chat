@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Voice from '@react-native-voice/voice';
+
 import {
   SafeAreaView,
   StyleSheet,
@@ -12,6 +13,11 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+
+import { NativeModules } from 'react-native';
+console.log('Voice JS object:', Voice);
+console.log('NativeModules.RNVoice:', NativeModules.RNVoice);
+console.log('NativeModules.Voice:', NativeModules.Voice);
 
 // Request microphone permission
 const requestMicPermission = async () => {
@@ -42,9 +48,20 @@ function App() {
   const [reply, setReply] = useState('');
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
   const [error, setError] = useState("");
+  const voiceInitialized = useRef(false);
 
-  //Voice Event Handlers
+  // Initialize Voice
   useEffect(() => {
+    console.log('Initializing Voice module...');
+    console.log('Voice module:', Voice);
+
+    if (!Voice) {
+      console.error('Voice module is null!');
+      setError('Voice module failed to load');
+      return;
+    }
+
+    // Set up event handlers
     Voice.onSpeechStart = (e) => {
       console.log('Started Speaking', e);
       setError('');
@@ -55,20 +72,47 @@ function App() {
       setIsListening(false);
     };
 
+    Voice.onSpeechResults = (e) => {
+      console.log('Speech Results: ', e);
+      if (e.value && e.value[0]) {
+        setTranscript(e.value[0]);
+      }
+    };
+
+    Voice.onSpeechPartialResults = (e) => {
+      console.log('Partial Speech Results: ', e);
+      if (e.value && e.value[0]) {
+        setTranscript(e.value[0]);
+      }
+    };
+
     Voice.onSpeechError = (e) => {
-      console.log('Error in detecting speaking', e);
-      setError(e.error?.message || 'An error in detecting speech occured');
+       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
+      setError(e.error?.message || 'An error in detecting speech occurred');
       setIsListening(false);
-    }
+    };
+
+    voiceInitialized.current = true;
+    console.log('Voice module initialized');
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+      if (voiceInitialized.current && Voice) {
+        Voice.destroy().then(Voice.removeAllListeners).catch(console.error);
+      }
     };
-  }, [])
+  }, []);
 
-  //Start Listeing for Speech
+  // Start Listening for Speech
   const startListening = async () => {
+      console.log('StartListening called');
+    if (!Voice) {
+      console.log('Voice module not available');
+      setError('Voice module not available');
+      return;
+    }
+
     const hasPermission = await requestMicPermission();
+    console.log('Mic permission:', hasPermission);
 
     if (!hasPermission) {
       Alert.alert(
@@ -82,88 +126,94 @@ function App() {
       setTranscript('');
       setError('');
       setIsListening(true);
-      await Voice.start('hi-IN');
+      await Voice.start('en-US');
+      console.log('Voice recognition started');
     } catch (e) {
-      console.error('There was an erros in voice recognition: ', e);
-      setError('There was an error in initiaiting voice recognition');
+      console.error('There was an error in voice recognition: ', e);
+      setError('Error starting voice recognition: ' + e.message);
       setIsListening(false);
     }
   };
 
-  //Stop Listening for Speech
+  // Stop Listening for Speech
   const stopListening = async () => {
+    if (!Voice) return;
+
     try {
       await Voice.stop();
       setIsListening(false);
+      console.log('Voice recognition stopped');
     } catch (e) {
-      console.error('There was an error stopping voice recognition');
+      console.error('There was an error stopping voice recognition:', e);
     }
   };
 
   // Handle Mic Button Press
-const handleMicPress = async () => {
-  if (isListening) {
-    await stopListening();
-  } else {
-    await startListening();
-  }
-};
+  const handleMicPress = async () => {
+    if (isListening) {
+      await stopListening();
+    } else {
+      await startListening();
+    }
+  };
 
-return (
-  <SafeAreaView style={styles.container}>
-    <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
 
-    {/* Header */}
-    <View style={styles.header}>
-      <Text style={styles.headerTitle}>Hindi Voice Bot</Text>
-      <View style={[
-        styles.statusBadge,
-        { backgroundColor: mqttStatus === 'Connected' ? '#00ff88' : '#ff4444' }
-      ]}>
-        <Text style={styles.statusText}>MQTT: {mqttStatus}</Text>
-      </View>
-    </View>
-
-    {/* Content */}
-    <ScrollView style={styles.content}>
-      {/* Transcript Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Your Speech (Hindi)</Text>
-        <View style={styles.textBox}>
-          <Text style={styles.textContent}>
-            {transcript || 'Tap the mic to start speaking...'}
-          </Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Hindi Voice Bot</Text>
+        <View style={[
+          styles.statusBadge,
+          { backgroundColor: mqttStatus === 'Connected' ? '#00ff88' : '#ff4444' }
+        ]}>
+          <Text style={styles.statusText}>MQTT: {mqttStatus}</Text>
         </View>
       </View>
 
-      {/* Reply Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Bot Reply</Text>
-        <View style={styles.textBox}>
-          <Text style={styles.textContent}>
-            {reply || 'Waiting for response...'}
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
+      <ScrollView style={styles.content}>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
-    {/* Mic Button */}
-    <View style={styles.micContainer}>
-      <TouchableOpacity
-        style={[
-          styles.micButton,
-          isListening && styles.micButtonActive
-        ]}
-        onPress={handleMicPress}
-        activeOpacity={0.7}>
-        <Text style={styles.micIcon}>🎤</Text>
-      </TouchableOpacity>
-      <Text style={styles.micLabel}>
-        {isListening ? 'Listening...' : 'Tap to Speak'}
-      </Text>
-    </View>
-  </SafeAreaView>
-);
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Your Speech (Hindi)</Text>
+          <View style={styles.textBox}>
+            <Text style={styles.textContent}>
+              {transcript || (isListening ? 'Listening...' : 'Tap the mic to start speaking...')}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Bot Reply</Text>
+          <View style={styles.textBox}>
+            <Text style={styles.textContent}>
+              {reply || 'Waiting for response...'}
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      <View style={styles.micContainer}>
+        <TouchableOpacity
+          style={[
+            styles.micButton,
+            isListening && styles.micButtonActive
+          ]}
+          onPress={handleMicPress}
+          activeOpacity={0.7}>
+          <Text style={styles.micIcon}>🎤</Text>
+        </TouchableOpacity>
+        <Text style={styles.micLabel}>
+          {isListening ? 'Listening... (Tap to stop)' : 'Tap to Speak'}
+        </Text>
+      </View>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -254,6 +304,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#00d4ff',
+    fontWeight: '600',
+  },
+  errorBox: {
+    backgroundColor: '#ff4444',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

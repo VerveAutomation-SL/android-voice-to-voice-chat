@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Voice from '@react-native-voice/voice';
+import Tts from 'react-native-tts';
 
 import {
   SafeAreaView,
@@ -52,7 +53,7 @@ function App() {
 
   // Initialize Voice
   useEffect(() => {
-    console.log('Initializing Voice module...');
+    console.log('Initializing Voice & TTS modules...');
     console.log('Voice module:', Voice);
 
     if (!Voice) {
@@ -61,7 +62,16 @@ function App() {
       return;
     }
 
-    // Set up event handlers
+    try {
+      Tts.setDefaultLanguage('hi-IN');
+      Tts.setDefaultRate(0.9);
+      Tts.setDefaultPitch(1.0);
+      console.log('✅ TTS initialized successfully');
+    } catch (e) {
+      console.error('❌ Failed to initialize TTS:', e);
+    }
+
+    // 🎙️ Set up Voice event handlers
     Voice.onSpeechStart = (e) => {
       console.log('Started Speaking', e);
       setError('');
@@ -87,7 +97,7 @@ function App() {
     };
 
     Voice.onSpeechError = (e) => {
-       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
+      console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
       setError(e.error?.message || 'An error in detecting speech occurred');
       setIsListening(false);
     };
@@ -97,14 +107,16 @@ function App() {
 
     return () => {
       if (voiceInitialized.current && Voice) {
-        Voice.destroy().then(Voice.removeAllListeners).catch(console.error);
+        Voice.destroy()
+          .then(Voice.removeAllListeners)
+          .catch(console.error);
       }
     };
   }, []);
 
   // Start Listening for Speech
   const startListening = async () => {
-      console.log('StartListening called');
+    console.log('StartListening called');
     if (!Voice) {
       console.log('Voice module not available');
       setError('Voice module not available');
@@ -126,7 +138,7 @@ function App() {
       setTranscript('');
       setError('');
       setIsListening(true);
-      await Voice.start('en-US');
+      await Voice.start('hi-IN');
       console.log('Voice recognition started');
     } catch (e) {
       console.error('There was an error in voice recognition: ', e);

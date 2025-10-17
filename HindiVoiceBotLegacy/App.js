@@ -64,8 +64,8 @@ function App() {
 
     try {
       Tts.setDefaultLanguage('hi-IN');
-      Tts.setDefaultRate(0.9);
-      Tts.setDefaultPitch(1.0);
+      Tts.setDefaultRate(0.55);
+      Tts.setDefaultPitch(0.95);
       console.log('✅ TTS initialized successfully');
     } catch (e) {
       console.error('❌ Failed to initialize TTS:', e);
@@ -84,8 +84,26 @@ function App() {
 
     Voice.onSpeechResults = (e) => {
       console.log('Speech Results: ', e);
+
       if (e.value && e.value[0]) {
-        setTranscript(e.value[0]);
+        const spokenText = e.value[0];
+        setTranscript(spokenText);
+
+        const responseText = `आपने कहा ${spokenText}`;
+        setReply(responseText);
+
+        try {
+          Tts.stop(); 
+          const responseText = `आपने कहा ${spokenText}`;
+          console.log('Speaking:', responseText);
+          Tts.speak(responseText, {
+            androidParams: {
+              KEY_PARAM_STREAM: 'STREAM_MUSIC',
+            },
+          });
+        } catch (ttsError) {
+          console.error('Error in TTS:', ttsError);
+        }
       }
     };
 
@@ -329,6 +347,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+
+  micButtonActive: {
+  backgroundColor: '#ff4444',
+  shadowColor: '#ff4444',
+  shadowOpacity: 0.8,
+  shadowRadius: 15,
+  elevation: 12,
+},
 });
 
 export default App;

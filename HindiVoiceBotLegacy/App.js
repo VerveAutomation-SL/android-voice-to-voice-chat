@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
+import { getGeminiResponse } from './src/services/geminiService';
 
 import {
   SafeAreaView,
@@ -53,84 +54,94 @@ function App() {
 
   // Initialize Voice
   useEffect(() => {
-    console.log('Initializing Voice & TTS modules...');
-    console.log('Voice module:', Voice);
+  console.log('Initializing Voice & TTS modules...');
+  console.log('Voice module:', Voice);
 
-    if (!Voice) {
-      console.error('Voice module is null!');
-      setError('Voice module failed to load');
-      return;
-    }
+  if (!Voice) {
+    console.error('Voice module is null!');
+    setError('Voice module failed to load');
+    return;
+  }
 
+  // ✅ Proper TTS initialization with getInitStatus
+  const initTts = async () => {
     try {
-      Tts.setDefaultLanguage('hi-IN');
-      Tts.setDefaultRate(0.55);
-      Tts.setDefaultPitch(0.95);
+      await Tts.getInitStatus(); // ⬅️ wait until native TTS engine is ready
+      await Tts.setDefaultLanguage('hi-IN');
+      await Tts.setDefaultRate(0.55);
+      await Tts.setDefaultPitch(0.95);
       console.log('✅ TTS initialized successfully');
     } catch (e) {
       console.error('❌ Failed to initialize TTS:', e);
     }
+  };
+  initTts();
 
-    // 🎙️ Set up Voice event handlers
-    Voice.onSpeechStart = (e) => {
-      console.log('Started Speaking', e);
-      setError('');
-    };
+  // 🎙️ Set up Voice event handlers
+  Voice.onSpeechStart = (e) => {
+    console.log('Started Speaking', e);
+    setError('');
+  };
 
-    Voice.onSpeechEnd = (e) => {
-      console.log('Stopped Speaking', e);
-      setIsListening(false);
-    };
+  Voice.onSpeechEnd = (e) => {
+    console.log('Stopped Speaking', e);
+    setIsListening(false);
+  };
 
-    Voice.onSpeechResults = (e) => {
-      console.log('Speech Results: ', e);
+  Voice.onSpeechResults = async (e) => {
+    console.log('Speech Results: ', e);
 
-      if (e.value && e.value[0]) {
-        const spokenText = e.value[0];
-        setTranscript(spokenText);
+    if (e.value && e.value[0]) {
+      const spokenText = e.value[0];
+      setTranscript(spokenText);
 
-        const responseText = `आपने कहा ${spokenText}`;
-        setReply(responseText);
+      try {
+        // 🔗 Send your speech to Gemini for an intelligent reply
+        const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
+        console.log('🤖 Gemini Reply:', aiReply);
 
-        try {
-          Tts.stop(); 
-          const responseText = `आपने कहा ${spokenText}`;
-          console.log('Speaking:', responseText);
-          Tts.speak(responseText, {
-            androidParams: {
-              KEY_PARAM_STREAM: 'STREAM_MUSIC',
-            },
-          });
-        } catch (ttsError) {
-          console.error('Error in TTS:', ttsError);
-        }
+        // 💬 Show the AI reply on screen
+        setReply(aiReply);
+
+        // 🗣️ Speak out Gemini’s reply
+        Tts.stop();
+        await Tts.speak(aiReply, {
+          androidParams: {
+            KEY_PARAM_STREAM: 'STREAM_MUSIC',
+          },
+        });
+      } catch (err) {
+        console.error('Gemini processing error:', err);
+        setReply('सर्वर से कनेक्शन में समस्या हुई।');
+        Tts.speak('सर्वर से कनेक्शन में समस्या हुई।');
       }
-    };
+    }
+  };
 
-    Voice.onSpeechPartialResults = (e) => {
-      console.log('Partial Speech Results: ', e);
-      if (e.value && e.value[0]) {
-        setTranscript(e.value[0]);
-      }
-    };
+  Voice.onSpeechPartialResults = (e) => {
+    console.log('Partial Speech Results: ', e);
+    if (e.value && e.value[0]) {
+      setTranscript(e.value[0]);
+    }
+  };
 
-    Voice.onSpeechError = (e) => {
-      console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
-      setError(e.error?.message || 'An error in detecting speech occurred');
-      setIsListening(false);
-    };
+  Voice.onSpeechError = (e) => {
+    console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
+    setError(e.error?.message || 'An error in detecting speech occurred');
+    setIsListening(false);
+  };
 
-    voiceInitialized.current = true;
-    console.log('Voice module initialized');
+  voiceInitialized.current = true;
+  console.log('Voice module initialized');
 
-    return () => {
-      if (voiceInitialized.current && Voice) {
-        Voice.destroy()
-          .then(Voice.removeAllListeners)
-          .catch(console.error);
-      }
-    };
-  }, []);
+  return () => {
+    if (voiceInitialized.current && Voice) {
+      Voice.destroy()
+        .then(Voice.removeAllListeners)
+        .catch(console.error);
+    }
+  };
+}, []);
 
   // Start Listening for Speech
   const startListening = async () => {
@@ -349,12 +360,12 @@ const styles = StyleSheet.create({
   },
 
   micButtonActive: {
-  backgroundColor: '#ff4444',
-  shadowColor: '#ff4444',
-  shadowOpacity: 0.8,
-  shadowRadius: 15,
-  elevation: 12,
-},
+    backgroundColor: '#ff4444',
+    shadowColor: '#ff4444',
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 12,
+  },
 });
 
 export default App;

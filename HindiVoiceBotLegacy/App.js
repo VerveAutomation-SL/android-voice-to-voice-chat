@@ -51,97 +51,98 @@ function App() {
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
   const [error, setError] = useState("");
   const voiceInitialized = useRef(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Initialize Voice
   useEffect(() => {
-  console.log('Initializing Voice & TTS modules...');
-  console.log('Voice module:', Voice);
+    console.log('Initializing Voice & TTS modules...');
+    console.log('Voice module:', Voice);
 
-  if (!Voice) {
-    console.error('Voice module is null!');
-    setError('Voice module failed to load');
-    return;
-  }
-
-  // ✅ Proper TTS initialization with getInitStatus
-  const initTts = async () => {
-    try {
-      await Tts.getInitStatus(); // ⬅️ wait until native TTS engine is ready
-      await Tts.setDefaultLanguage('hi-IN');
-      await Tts.setDefaultRate(0.55);
-      await Tts.setDefaultPitch(0.95);
-      console.log('✅ TTS initialized successfully');
-    } catch (e) {
-      console.error('❌ Failed to initialize TTS:', e);
+    if (!Voice) {
+      console.error('Voice module is null!');
+      setError('Voice module failed to load');
+      return;
     }
-  };
-  initTts();
 
-  // 🎙️ Set up Voice event handlers
-  Voice.onSpeechStart = (e) => {
-    console.log('Started Speaking', e);
-    setError('');
-  };
-
-  Voice.onSpeechEnd = (e) => {
-    console.log('Stopped Speaking', e);
-    setIsListening(false);
-  };
-
-  Voice.onSpeechResults = async (e) => {
-    console.log('Speech Results: ', e);
-
-    if (e.value && e.value[0]) {
-      const spokenText = e.value[0];
-      setTranscript(spokenText);
-
+    const initTts = async () => {
       try {
-        // 🔗 Send your speech to Gemini for an intelligent reply
-        const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
-        console.log('🤖 Gemini Reply:', aiReply);
-
-        // 💬 Show the AI reply on screen
-        setReply(aiReply);
-
-        // 🗣️ Speak out Gemini’s reply
-        Tts.stop();
-        await Tts.speak(aiReply, {
-          androidParams: {
-            KEY_PARAM_STREAM: 'STREAM_MUSIC',
-          },
-        });
-      } catch (err) {
-        console.error('Gemini processing error:', err);
-        setReply('सर्वर से कनेक्शन में समस्या हुई।');
-        Tts.speak('सर्वर से कनेक्शन में समस्या हुई।');
+        await Tts.getInitStatus();
+        await Tts.setDefaultLanguage('hi-IN');
+        await Tts.setDefaultRate(0.55);
+        await Tts.setDefaultPitch(0.95);
+        console.log('✅ TTS initialized successfully');
+      } catch (e) {
+        console.error('❌ Failed to initialize TTS:', e);
       }
-    }
-  };
+    };
+    initTts();
 
-  Voice.onSpeechPartialResults = (e) => {
-    console.log('Partial Speech Results: ', e);
-    if (e.value && e.value[0]) {
-      setTranscript(e.value[0]);
-    }
-  };
+    // 🎙️ Set up Voice event handlers
+    Voice.onSpeechStart = (e) => {
+      console.log('Started Speaking', e);
+      setError('');
+    };
 
-  Voice.onSpeechError = (e) => {
-    console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
-    setError(e.error?.message || 'An error in detecting speech occurred');
-    setIsListening(false);
-  };
+    Voice.onSpeechEnd = (e) => {
+      console.log('Stopped Speaking', e);
+      setIsListening(false);
+    };
 
-  voiceInitialized.current = true;
-  console.log('Voice module initialized');
+    Voice.onSpeechResults = async (e) => {
+      console.log('Speech Results: ', e);
 
-  return () => {
-    if (voiceInitialized.current && Voice) {
-      Voice.destroy()
-        .then(Voice.removeAllListeners)
-        .catch(console.error);
-    }
-  };
-}, []);
+      if (e.value && e.value[0]) {
+        const spokenText = e.value[0];
+        setTranscript(spokenText);
+
+        try {
+          setIsLoading(true);
+
+          const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
+          console.log('🤖 Gemini Reply:', aiReply);
+
+          setReply(aiReply);
+
+          setIsLoading(false);
+
+          Tts.stop();
+          await Tts.speak(aiReply, {
+            androidParams: {
+              KEY_PARAM_STREAM: 'STREAM_MUSIC',
+            },
+          });
+        } catch (err) {
+          console.error('Gemini processing error:', err);
+          setReply('सर्वर से कनेक्शन में समस्या हुई।');
+          Tts.speak('सर्वर से कनेक्शन में समस्या हुई।');
+        }
+      }
+    };
+
+    Voice.onSpeechPartialResults = (e) => {
+      console.log('Partial Speech Results: ', e);
+      if (e.value && e.value[0]) {
+        setTranscript(e.value[0]);
+      }
+    };
+
+    Voice.onSpeechError = (e) => {
+      console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
+      setError(e.error?.message || 'An error in detecting speech occurred');
+      setIsListening(false);
+    };
+
+    voiceInitialized.current = true;
+    console.log('Voice module initialized');
+
+    return () => {
+      if (voiceInitialized.current && Voice) {
+        Voice.destroy()
+          .then(Voice.removeAllListeners)
+          .catch(console.error);
+      }
+    };
+  }, []);
 
   // Start Listening for Speech
   const startListening = async () => {
@@ -231,6 +232,11 @@ function App() {
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Bot Reply</Text>
+          {isLoading && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>🤖 Gemini सोचा जा रहा है...</Text>
+            </View>
+          )}
           <View style={styles.textBox}>
             <Text style={styles.textContent}>
               {reply || 'Waiting for response...'}
@@ -365,6 +371,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 15,
     elevation: 12,
+  },
+
+  micButtonActive: {
+    backgroundColor: '#ff4444',
+    shadowColor: '#ff4444',
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 12,
+    transform: [{ scale: 1.1 }],
+  },
+
+  loadingContainer: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loadingText: {
+    color: '#00d4ff',
+    fontSize: 16,
+    fontStyle: 'italic',
   },
 });
 

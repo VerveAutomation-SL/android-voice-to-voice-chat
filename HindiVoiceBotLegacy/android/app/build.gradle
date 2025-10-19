@@ -163,7 +163,6 @@ dependencies {
 
     // RK3399 SDK integration
     implementation files('libs/Reeman3399.180322.jar')
-    implementation files('libs/Reeman3399.180226.jar')
 
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
     debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {

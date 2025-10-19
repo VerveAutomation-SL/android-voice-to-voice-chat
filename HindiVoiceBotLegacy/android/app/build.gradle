@@ -146,6 +146,13 @@ android {
 
         }
     }
+
+    // Added for RK3399 SDK integration
+    repositories {
+        flatDir {
+            dirs 'libs'
+        }
+    }
 }
 
 dependencies {
@@ -153,6 +160,10 @@ dependencies {
     implementation("com.facebook.react:react-android")
 
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.0.0")
+
+    // RK3399 SDK integration
+    implementation files('libs/Reeman3399.180322.jar')
+    implementation files('libs/Reeman3399.180226.jar')
 
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
     debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
 import { getGeminiResponse } from './src/services/geminiService';
-
+import { sendRobotCommand } from './src/services/RobotMotionService';
 import {
   SafeAreaView,
   StyleSheet,
@@ -97,6 +97,8 @@ function App() {
 
         try {
           setIsLoading(true);
+
+          await sendRobotCommand(spokenText);
 
           const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
           console.log('🤖 Gemini Reply:', aiReply);

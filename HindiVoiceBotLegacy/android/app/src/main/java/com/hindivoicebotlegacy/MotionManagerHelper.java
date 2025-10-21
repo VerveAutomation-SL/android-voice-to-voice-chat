@@ -7,8 +7,14 @@ import com.facebook.react.bridge.ReactMethod;
 import com.reeman.nerves.RobotActionProvider;
 
 public class MotionManagerHelper extends ReactContextBaseJavaModule {
+
+    private static final String TAG = "MotionManager3399";
+    private final RobotActionProvider robot;
+
     public MotionManagerHelper(ReactApplicationContext reactContext) {
         super(reactContext);
+        robot = RobotActionProvider.getInstance();
+        Log.d(TAG, "✅ MotionManagerHelper initialized with Reeman SDK");
     }
 
     @Override
@@ -16,27 +22,47 @@ public class MotionManagerHelper extends ReactContextBaseJavaModule {
         return "MotionManager3399";
     }
 
+    // Move Forward
     @ReactMethod
     public void moveForward() {
-        Log.d("MotionManager3399", "Move Forward called");
-        RobotActionProvider.getInstance().moveForward();
+        Log.d(TAG, "🟢 Move Forward called");
+        try {
+            robot.moveFront(30); // speed parameter (0–100), adjust as needed
+        } catch (Exception e) {
+            Log.e(TAG, "Error moving forward", e);
+        }
     }
 
+    // Stop Movement
     @ReactMethod
     public void stop() {
-        Log.d("MotionManager3399", "Stop called");
-        RobotActionProvider.getInstance().stop();
+        Log.d(TAG, "🛑 Stop called");
+        try {
+            robot.stopMove();
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping movement", e);
+        }
     }
 
+    // Turn Left
     @ReactMethod
     public void turnLeft() {
-        Log.d("MotionManager3399", "Turn Left called");
-        RobotActionProvider.getInstance().turnLeft();
+        Log.d(TAG, "↩️ Turn Left called");
+        try {
+            robot.moveLeft(30, 1000); // speed, duration (ms)
+        } catch (Exception e) {
+            Log.e(TAG, "Error turning left", e);
+        }
     }
 
+    // Turn Right
     @ReactMethod
     public void turnRight() {
-        Log.d("MotionManager3399", "Turn Right called");
-        RobotActionProvider.getInstance().turnRight();
+        Log.d(TAG, "↪️ Turn Right called");
+        try {
+            robot.moveRight(30, 1000); // speed, duration (ms)
+        } catch (Exception e) {
+            Log.e(TAG, "Error turning right", e);
+        }
     }
 }

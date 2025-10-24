@@ -401,8 +401,6 @@ export default function AskMeScreen() {
             <View style={styles.messageHeaderText}>
               <Text style={styles.messageLabel}>Your Speech</Text>
               <View style={styles.messageBadge}>
-                <View style={styles.badgeDot} />
-                <Text style={styles.messageSubtext}>Hindi Input</Text>
               </View>
             </View>
           </View>
@@ -453,8 +451,6 @@ export default function AskMeScreen() {
             <View style={styles.messageHeaderText}>
               <Text style={styles.messageLabel}>AI Response</Text>
               <View style={styles.messageBadge}>
-                <View style={[styles.badgeDot, styles.badgeDotAI]} />
-                <Text style={styles.messageSubtext}>Powered by Gemini</Text>
               </View>
             </View>
           </View>
@@ -521,6 +517,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0f',
   },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -536,16 +533,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     marginRight: 8,
   },
+
   logoContainer: {
     position: 'relative',
     marginRight: 12,
   },
+
   logo: {
     width: 44,
     height: 44,
@@ -554,6 +554,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#6366f1',
   },
+
   logoGlow: {
     position: 'absolute',
     width: 44,
@@ -564,20 +565,24 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
   },
+
   brandContainer: {
     justifyContent: 'center',
   },
+
   brandName: {
     fontSize: 20,
     fontWeight: '800',
     color: '#ffffff',
     letterSpacing: 1,
   },
+
   headerRight: {
     flexDirection: 'column',
     alignItems: 'flex-end',
     gap: 8,
   },
+
   statusIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -588,38 +593,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
+
   statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
+
   statusLabel: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+
   signInButton: {
     borderRadius: 10,
     overflow: 'hidden',
   },
+
   signInGradient: {
     backgroundColor: '#6366f1',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
   },
+
   signInText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+
   content: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
     gap: 16,
   },
+
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -630,6 +642,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(153, 27, 27, 0.5)',
   },
+
   errorIcon: {
     width: 36,
     height: 36,
@@ -639,24 +652,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 14,
   },
+
   errorIconText: {
     fontSize: 18,
   },
+
   errorContent: {
     flex: 1,
   },
+
   errorTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#fecaca',
     marginBottom: 4,
   },
+
   errorMessage: {
     color: '#fca5a5',
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 20,
   },
+  
   messageCard: {
     position: 'relative',
     backgroundColor: '#12121a',
@@ -671,9 +689,11 @@ const styles = StyleSheet.create({
     elevation: 6,
     overflow: 'hidden',
   },
+
   aiMessageCard: {
     borderColor: '#2a2a3e',
   },
+
   cardGradientBorder: {
     position: 'absolute',
     top: 0,
@@ -683,14 +703,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     opacity: 0.6,
   },
+
   cardGradientBorderAI: {
     backgroundColor: '#8b5cf6',
   },
+
   messageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
+
   avatarContainer: {
     position: 'relative',
     width: 40,
@@ -703,9 +726,11 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: '#6366f1',
   },
+
   avatarAI: {
     borderColor: '#8b5cf6',
   },
+
   avatarGlow: {
     position: 'absolute',
     width: 40,
@@ -714,15 +739,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     opacity: 0.15,
   },
+
   avatarGlowAI: {
     backgroundColor: '#8b5cf6',
   },
+
   avatarText: {
     fontSize: 20,
   },
+
   messageHeaderText: {
     flex: 1,
   },
+
   messageLabel: {
     fontSize: 15,
     fontWeight: '700',
@@ -730,45 +759,37 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     letterSpacing: 0.3,
   },
+
   messageBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  badgeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#6366f1',
-  },
-  badgeDotAI: {
-    backgroundColor: '#8b5cf6',
-  },
-  messageSubtext: {
-    fontSize: 11,
-    color: '#8b8b9a',
-    fontWeight: '600',
-  },
+
   messageContent: {
     minHeight: 60,
     justifyContent: 'center',
   },
+
   messageText: {
     fontSize: 14,
     lineHeight: 22,
     color: '#d1d1db',
     fontWeight: '400',
   },
+
   listeningIndicator: {
     alignItems: 'center',
     gap: 12,
   },
+
   waveform: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     height: 40,
   },
+
   bar: {
     width: 5,
     backgroundColor: '#6366f1',
@@ -778,11 +799,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 4,
   },
+
   listeningTextContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+
   listeningPulse: {
     width: 8,
     height: 8,
@@ -793,32 +816,38 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 6,
   },
+
   listeningText: {
     fontSize: 14,
     color: '#6366f1',
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+
   loadingState: {
     alignItems: 'center',
     gap: 10,
   },
+
   typingIndicator: {
     flexDirection: 'row',
     gap: 8,
   },
+
   typingDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: '#8b5cf6',
   },
+
   loadingStateText: {
     fontSize: 14,
     color: '#8b5cf6',
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+
   controlPanel: {
     position: 'relative',
     backgroundColor: '#12121a',
@@ -833,6 +862,7 @@ const styles = StyleSheet.create({
     elevation: 12,
     overflow: 'hidden',
   },
+
   controlPanelGradient: {
     position: 'absolute',
     top: 0,
@@ -841,9 +871,11 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: 'rgba(99, 102, 241, 0.3)',
   },
+
   microphoneSection: {
     alignItems: 'center',
   },
+  
   micButton: {
     position: 'relative',
     width: 75,
@@ -858,10 +890,12 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
+
   micButtonActive: {
     backgroundColor: '#ef4444',
     shadowColor: '#ef4444',
   },
+
   micButtonGlow: {
     position: 'absolute',
     width: 85,
@@ -870,6 +904,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     opacity: 0.2,
   },
+
   micButtonInner: {
     width: 65,
     height: 65,
@@ -880,15 +915,18 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
+
   micIcon: {
     fontSize: 32,
   },
+
   stopIcon: {
     width: 24,
     height: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   stopSquare: {
     width: 18,
     height: 18,
@@ -899,6 +937,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 4,
   },
+
   controlLabel: {
     marginTop: 14,
     fontSize: 15,
@@ -906,12 +945,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 0.5,
   },
+
   controlSubtext: {
     marginTop: 5,
     fontSize: 12,
     color: '#8b8b9a',
     fontWeight: '500',
   },
+  
   footerText: {
     fontSize: 11,
     color: '#8b8b9a',

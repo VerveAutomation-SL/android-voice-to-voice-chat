@@ -235,6 +235,7 @@ export default function AskMeScreen() {
         await Tts.setDefaultPitch(0.95);
                 Tts.addEventListener('tts-finish', () => {
           logEvent('TTS', 'Speech playback finished');
+          setIsListening(false);
         });
       } catch (e) {
         console.error('❌ Failed to initialize TTS:', e);
@@ -265,7 +266,12 @@ export default function AskMeScreen() {
         logEvent('AI', `Sending prompt to Gemini: ${spokenText}`);
 
         try {
+          if (isListening) {
+            await stopListening();
+          }
+
           setIsLoading(true);
+          setReply('Gemini is thinking...')
 
           logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
           await sendRobotCommand(spokenText);
@@ -279,13 +285,14 @@ export default function AskMeScreen() {
 
           setIsLoading(false);
 
+          await new Promise(resolve => setTimeout(resolve, 300));
+
           Tts.stop();
           logEvent('TTS', `Speaking AI reply aloud`);
-          await Tts.speak(aiReply, {
+          Tts.speak(aiReply, {
             androidParams: {
               KEY_PARAM_STREAM: 'STREAM_MUSIC',
             },
-
           });
         } catch (err) {
           console.error('Gemini processing error:', err);

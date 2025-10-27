@@ -30,16 +30,25 @@ const requestMicPermission = async () => {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         {
-          title: 'Microphone Permission',
-          message: 'AIVOICY needs access to your microphone',
+          title: 'Microphone Permission Required',
+          message: 'AIVOICY needs access to your microphone to process yourspeech commands',
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
         },
       );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        return true;
+      } else {
+        Alert.alert(
+          'Microphone Permissiob Denied',
+          'Microphone permission is required for voice input. Please enable it in your app settings.',
+        );
+        return false;
+      }
     } catch (err) {
-      console.warn(err);
+      console.warn('Microphone Permission Error:', err);
+      Alert.alert('Error', 'Unable to request microphone permission.');
       return false;
     }
   }
@@ -221,6 +230,10 @@ export default function AskMeScreen() {
         console.log('✅ TTS initialized successfully');
       } catch (e) {
         console.error('❌ Failed to initialize TTS:', e);
+        Alert.alert(
+          'TTS Engine Error',
+          'Text-to-Speech engine could not be initialized. Some responses may not be spoken aloud.'
+        );
       }
     };
     initTts();
@@ -277,9 +290,19 @@ export default function AskMeScreen() {
 
     Voice.onSpeechError = (e) => {
       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
-      setError(e.error?.message || 'An error in detecting speech occurred');
+
+      let errorMessage = 'An error occurred while detecting your speech.';
+      if (e.error && e.error.message) {
+        errorMessage = e.error.message.toLowerCase().includes('no_match')
+          ? 'I could not understand that. Please try again.'
+          : e.error.message;
+      }
+
+      setError(errorMessage);
+      Alert.alert('Speech Recognition Error', errorMessage);
       setIsListening(false);
     };
+
 
     voiceInitialized.current = true;
     console.log('Voice module initialized');
@@ -301,6 +324,13 @@ export default function AskMeScreen() {
   // Start Listening for Speech
   const startListening = async () => {
     console.log('StartListening called');
+
+    if (!Voice || typeof Voice.start !== 'function') {
+      Alert.alert('Voice Engine Error', 'Speech recognition is not available on this device.');
+      setError('Voice module not available.');
+      return;
+    }
+
     if (!Voice) {
       console.log('Voice module not available');
       setError('Voice module not available');

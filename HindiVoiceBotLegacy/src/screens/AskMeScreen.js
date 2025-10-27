@@ -46,6 +46,23 @@ const requestMicPermission = async () => {
   return true;
 };
 
+//Check if Robot SDK is available
+const checkRobotConnection = () => {
+  try {
+    const { MotionManager3399 } = NativeModules;
+    if (MotionManager3399 && typeof MotionManager3399.moveFront === 'function') {
+      console.log('Robot SDK is detected');
+      return true;
+    } else {
+      console.log('Robot SDK is not detected, Switching to mock mode');
+      return false;
+    }
+  } catch (error) {
+    console.log('Error detecting Robot SDK:', error);
+    return false;
+  }
+}
+
 export default function AskMeScreen() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -276,6 +293,11 @@ export default function AskMeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    const connected = checkRobotConnection();
+    setMqttStatus(connected ? 'Connected' : 'Disconnected - Mock Mode');
+  }, []);
+
   // Start Listening for Speech
   const startListening = async () => {
     console.log('StartListening called');
@@ -362,16 +384,16 @@ export default function AskMeScreen() {
             </View>
           </TouchableOpacity>
           <View style={[styles.statusIndicator,
-          { backgroundColor: mqttStatus === 'Connected' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }]}>
+          { backgroundColor: mqttStatus === 'Connected' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(250, 204, 21, 0.15)' }]}>
             <Animated.View style={[
               styles.statusDot,
               {
-                backgroundColor: mqttStatus === 'Connected' ? '#10b981' : '#ef4444',
+                backgroundColor: mqttStatus === 'Connected' ? '#10b981' : '#facc15',
                 transform: [{ scale: statusPulse }]
               }
             ]} />
-            <Text style={[styles.statusLabel, { color: mqttStatus === 'Connected' ? '#10b981' : '#ef4444' }]}>
-              {mqttStatus}
+            <Text style={[styles.statusLabel, { color: mqttStatus === 'Connected' ? '#10b981' : '#facc15' }]}>
+              {mqttStatus === 'Connected' ? 'Robot Connected' : 'Disconnected - Mock Mode'}
             </Text>
           </View>
         </View>
@@ -674,7 +696,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 20,
   },
-  
+
   messageCard: {
     position: 'relative',
     backgroundColor: '#12121a',
@@ -875,7 +897,7 @@ const styles = StyleSheet.create({
   microphoneSection: {
     alignItems: 'center',
   },
-  
+
   micButton: {
     position: 'relative',
     width: 75,
@@ -952,7 +974,7 @@ const styles = StyleSheet.create({
     color: '#8b8b9a',
     fontWeight: '500',
   },
-  
+
   footerText: {
     fontSize: 11,
     color: '#8b8b9a',

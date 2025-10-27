@@ -72,6 +72,12 @@ const checkRobotConnection = () => {
   }
 }
 
+// Utility for structured logging
+const logEvent = (type, message) => {
+  const timestamp = new Date().toISOString().split('T').join(' ').split('Z')[0];
+  console.log(`[${timestamp}] [${type}] ${message}`);
+}
+
 export default function AskMeScreen() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -227,7 +233,9 @@ export default function AskMeScreen() {
         await Tts.setDefaultLanguage('hi-IN');
         await Tts.setDefaultRate(0.55);
         await Tts.setDefaultPitch(0.95);
-        console.log('✅ TTS initialized successfully');
+                Tts.addEventListener('tts-finish', () => {
+          logEvent('TTS', 'Speech playback finished');
+        });
       } catch (e) {
         console.error('❌ Failed to initialize TTS:', e);
         Alert.alert(
@@ -239,39 +247,45 @@ export default function AskMeScreen() {
     initTts();
 
     Voice.onSpeechStart = (e) => {
-      console.log('Started Speaking', e);
+      logEvent('VOICE', 'Speech recognition started');
       setError('');
     };
 
     Voice.onSpeechEnd = (e) => {
-      console.log('Stopped Speaking', e);
+      logEvent('VOICE', 'Speech recognition ended');
       setIsListening(false);
     };
 
     Voice.onSpeechResults = async (e) => {
-      console.log('Speech Results: ', e);
+      logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
 
       if (e.value && e.value[0]) {
         const spokenText = e.value[0];
         setTranscript(spokenText);
+        logEvent('AI', `Sending prompt to Gemini: ${spokenText}`);
 
         try {
           setIsLoading(true);
 
+          logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
           await sendRobotCommand(spokenText);
+          logEvent('ROBOT', `Command execution complete`);
+
 
           const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
-          console.log('🤖 Gemini Reply:', aiReply);
+          logEvent('AI', `Gemini replied: ${aiReply}`);
 
           setReply(aiReply);
 
           setIsLoading(false);
 
           Tts.stop();
+          logEvent('TTS', `Speaking AI reply aloud`);
           await Tts.speak(aiReply, {
             androidParams: {
               KEY_PARAM_STREAM: 'STREAM_MUSIC',
             },
+
           });
         } catch (err) {
           console.error('Gemini processing error:', err);

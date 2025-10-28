@@ -3,6 +3,7 @@ import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
 import { getGeminiResponse } from '../services/geminiService';
 import { sendRobotCommand } from '../services/RobotMotionService';
+import { Picker } from '@react-native-picker/picker';
 
 import {
   SafeAreaView,
@@ -86,6 +87,7 @@ export default function AskMeScreen() {
   const [error, setError] = useState("");
   const voiceInitialized = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('hi-IN');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const statusPulse = useRef(new Animated.Value(1)).current;
@@ -215,6 +217,9 @@ export default function AskMeScreen() {
     }).start();
   }, []);
 
+  useEffect(() => {
+    logEvent('LANGUAGE', `User selected language: ${selectedLanguage}`);
+  }, [selectedLanguage]);
 
   // Initialize Voice
   useEffect(() => {
@@ -233,7 +238,7 @@ export default function AskMeScreen() {
         await Tts.setDefaultLanguage('hi-IN');
         await Tts.setDefaultRate(0.55);
         await Tts.setDefaultPitch(0.95);
-                Tts.addEventListener('tts-finish', () => {
+        Tts.addEventListener('tts-finish', () => {
           logEvent('TTS', 'Speech playback finished');
           setIsListening(false);
         });
@@ -278,7 +283,12 @@ export default function AskMeScreen() {
           logEvent('ROBOT', `Command execution complete`);
 
 
-          const aiReply = await getGeminiResponse(`उत्तर हिंदी में दो: ${spokenText}`);
+          const promptPrefix =
+            selectedLanguage === 'ta-IN'
+              ? 'பதில் தமிழில் கொடு: '
+              : 'उत्तर हिंदी में दो: ';
+
+          const aiReply = await getGeminiResponse(`${promptPrefix}${spokenText}`);
           logEvent('AI', `Gemini replied: ${aiReply}`);
 
           setReply(aiReply);
@@ -289,6 +299,8 @@ export default function AskMeScreen() {
 
           Tts.stop();
           logEvent('TTS', `Speaking AI reply aloud`);
+          await Tts.setDefaultLanguage(selectedLanguage);
+          logEvent('TTS', `Speaking AI reply in ${selectedLanguage}`);
           Tts.speak(aiReply, {
             androidParams: {
               KEY_PARAM_STREAM: 'STREAM_MUSIC',
@@ -462,6 +474,30 @@ export default function AskMeScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Language Selector */}
+        <View style={{ marginVertical: 10, paddingHorizontal: 20 }}>
+          <Text style={{ color: '#d1d1db', fontSize: 14, marginBottom: 6 }}>
+            Select Language:
+          </Text>
+          <View style={{
+            backgroundColor: '#1f1f2e',
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: '#2a2a3e',
+            overflow: 'hidden'
+          }}>
+            <Picker
+              selectedValue={selectedLanguage}
+              dropdownIconColor="#ffffff"
+              style={{ color: '#ffffff', height: 45 }}
+              onValueChange={(itemValue) => setSelectedLanguage(itemValue)}
+            >
+              <Picker.Item label="🇮🇳 Hindi" value="hi-IN" />
+              <Picker.Item label="🇱🇰 Tamil" value="ta-IN" />
+            </Picker>
+          </View>
+        </View>
 
         {/* User Input Section */}
         <View style={styles.messageCard}>

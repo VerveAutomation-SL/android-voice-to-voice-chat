@@ -17,6 +17,7 @@ import {
   Alert,
   Image,
   Animated,
+  Modal,
 } from 'react-native';
 
 import { NativeModules } from 'react-native';
@@ -88,6 +89,7 @@ export default function AskMeScreen() {
   const voiceInitialized = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('hi-IN');
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const statusPulse = useRef(new Animated.Value(1)).current;
@@ -219,6 +221,9 @@ export default function AskMeScreen() {
 
   useEffect(() => {
     logEvent('LANGUAGE', `User selected language: ${selectedLanguage}`);
+    Tts.setDefaultLanguage(selectedLanguage).catch(e =>
+      console.warn('TTS language change failed', e),
+    );
   }, [selectedLanguage]);
 
   // Initialize Voice
@@ -288,7 +293,7 @@ export default function AskMeScreen() {
               ? 'பதில் தமிழில் கொடு: '
               : 'उत्तर हिंदी में दो: ';
 
-          const aiReply = await getGeminiResponse(`${promptPrefix}${spokenText}`);
+          const aiReply = await getGeminiResponse(`${promptPrefix}${spokenText}`, selectedLanguage);
           logEvent('AI', `Gemini replied: ${aiReply}`);
 
           setReply(aiReply);
@@ -364,35 +369,33 @@ export default function AskMeScreen() {
       return;
     }
 
-    if (!Voice) {
-      console.log('Voice module not available');
-      setError('Voice module not available');
-      return;
-    }
-
     const hasPermission = await requestMicPermission();
     console.log('Mic permission:', hasPermission);
 
     if (!hasPermission) {
-      Alert.alert(
-        'Permission Required',
-        'Microphone permission is required for voice recognition',
-      );
+      Alert.alert('Permission Required', 'Microphone permission is required for voice recognition');
       return;
     }
 
     try {
       setTranscript('');
       setError('');
+
+      await Tts.setDefaultLanguage(selectedLanguage);
+      logEvent('LANGUAGE', `Confirmed active language: ${selectedLanguage}`);
+
       setIsListening(true);
-      await Voice.start('hi-IN');
-      console.log('Voice recognition started');
+      await Voice.start(selectedLanguage);
+
+      logEvent('VOICE', `Voice recognition started in ${selectedLanguage}`);
+      console.log(`Voice recognition started with language: ${selectedLanguage}`);
     } catch (e) {
       console.error('There was an error in voice recognition: ', e);
       setError('Error starting voice recognition: ' + e.message);
       setIsListening(false);
     }
   };
+
 
   // Stop Listening for Speech
   const stopListening = async () => {
@@ -476,28 +479,83 @@ export default function AskMeScreen() {
         ) : null}
 
         {/* Language Selector */}
-        <View style={{ marginVertical: 10, paddingHorizontal: 20 }}>
-          <Text style={{ color: '#d1d1db', fontSize: 14, marginBottom: 6 }}>
-            Select Language:
-          </Text>
-          <View style={{
-            backgroundColor: '#1f1f2e',
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: '#2a2a3e',
-            overflow: 'hidden'
-          }}>
-            <Picker
-              selectedValue={selectedLanguage}
-              dropdownIconColor="#ffffff"
-              style={{ color: '#ffffff', height: 45 }}
-              onValueChange={(itemValue) => setSelectedLanguage(itemValue)}
-            >
-              <Picker.Item label="🇮🇳 Hindi" value="hi-IN" />
-              <Picker.Item label="🇱🇰 Tamil" value="ta-IN" />
-            </Picker>
+        <TouchableOpacity
+          style={styles.languageSelectorCard}
+          onPress={() => setShowLanguageModal(true)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.languageCardGradient} />
+          <View style={styles.languageCardContent}>
+            <Text style={styles.languageIcon}>🌐</Text>
+            <View style={styles.languageTextContainer}>
+              <Text style={styles.languageLabel}>Language</Text>
+              <Text style={styles.languageValue}>
+                {selectedLanguage === 'hi-IN' ? '🇮🇳 Hindi' : '🇱🇰 Tamil'}
+              </Text>
+            </View>
+            <Text style={styles.languageArrow}>›</Text>
           </View>
-        </View>
+        </TouchableOpacity>
+
+        {/* Language Modal */}
+        <Modal
+          visible={showLanguageModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowLanguageModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowLanguageModal(false)}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Language</Text>
+                <TouchableOpacity
+                  onPress={() => setShowLanguageModal(false)}
+                  style={styles.modalCloseButton}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.languageOption,
+                  selectedLanguage === 'hi-IN' && styles.languageOptionSelected
+                ]}
+                onPress={() => {
+                  setSelectedLanguage('hi-IN');
+                  setTimeout(() => setShowLanguageModal(false), 300);
+                }}
+              >
+                <Text style={styles.languageOptionFlag}>🇮🇳</Text>
+                <Text style={styles.languageOptionText}>Hindi</Text>
+                {selectedLanguage === 'hi-IN' && (
+                  <Text style={styles.languageOptionCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.languageOption,
+                  selectedLanguage === 'ta-IN' && styles.languageOptionSelected
+                ]}
+                onPress={() => {
+                  setSelectedLanguage('ta-IN');
+                  setTimeout(() => setShowLanguageModal(false), 300);
+                }}
+              >
+                <Text style={styles.languageOptionFlag}>🇱🇰</Text>
+                <Text style={styles.languageOptionText}>Tamil</Text>
+                {selectedLanguage === 'ta-IN' && (
+                  <Text style={styles.languageOptionCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* User Input Section */}
         <View style={styles.messageCard}>
@@ -1073,6 +1131,150 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#1f1f2e',
     textAlign: 'center',
+  },
+
+  languageSelectorCard: {
+    backgroundColor: '#12121a',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
+    marginBottom: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+
+  languageCardGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: '#6366f1',
+    opacity: 0.6,
+  },
+
+  languageCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  languageIcon: {
+    fontSize: 24,
+    marginRight: 14,
+  },
+
+  languageTextContainer: {
+    flex: 1,
+  },
+
+  languageLabel: {
+    fontSize: 12,
+    color: '#8b8b9a',
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+
+  languageValue: {
+    fontSize: 15,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+
+  languageArrow: {
+    fontSize: 28,
+    color: '#6366f1',
+    fontWeight: '300',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalContent: {
+    width: '85%',
+    backgroundColor: '#12121a',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1f1f2e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a3e',
+  },
+
+  modalCloseText: {
+    fontSize: 18,
+    color: '#d1d1db',
+    fontWeight: '600',
+  },
+
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#1f1f2e',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+
+  languageOptionSelected: {
+    borderColor: '#6366f1',
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  },
+
+  languageOptionFlag: {
+    fontSize: 28,
+    marginRight: 14,
+  },
+
+  languageOptionText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+
+  languageOptionCheck: {
+    fontSize: 20,
+    color: '#6366f1',
+    fontWeight: '700',
   },
 });
 

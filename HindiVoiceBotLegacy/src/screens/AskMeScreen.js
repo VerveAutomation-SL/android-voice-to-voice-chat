@@ -3,7 +3,8 @@ import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
 import { getGeminiResponse } from '../services/geminiService';
 import { sendRobotCommand } from '../services/RobotMotionService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import SettingsModal from '../components/SettingsModal';
 
 import {
   SafeAreaView,
@@ -17,7 +18,6 @@ import {
   Alert,
   Image,
   Animated,
-  Modal,
 } from 'react-native';
 
 import { NativeModules } from 'react-native';
@@ -82,7 +82,6 @@ const logEvent = (type, message) => {
 
 export default function AskMeScreen() {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
   const [error, setError] = useState("");
@@ -90,11 +89,12 @@ export default function AskMeScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('hi-IN');
   const [languageReady, setLanguageReady] = useState(false);
-  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const statusPulse = useRef(new Animated.Value(1)).current;
   const waveAnims = useRef([...Array(5)].map(() => new Animated.Value(0))).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
 
   // Pulse animation for listening state
   useEffect(() => {
@@ -237,7 +237,6 @@ export default function AskMeScreen() {
         setSelectedLanguage(langToUse);
         await Tts.setDefaultLanguage(langToUse);
 
-        // re-init ready state
         setLanguageReady(true);
       } catch (error) {
         console.error('Error loading saved language:', error);
@@ -247,6 +246,39 @@ export default function AskMeScreen() {
 
     loadLanguage();
   }, []);
+
+  //Shimmer animation for loading state
+  useEffect(() => {
+    let animation = null;
+
+    shimmerAnim.stopAnimation(() => {
+      shimmerAnim.setValue(0);
+
+      if (isLoading) {
+        animation = Animated.loop(
+          Animated.sequence([
+            Animated.timing(shimmerAnim, {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(shimmerAnim, {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        animation.start();
+      }
+    });
+
+    return () => {
+      if (animation) {
+        animation.stop();
+      }
+    };
+  }, [isLoading]);
 
   useEffect(() => {
     if (!languageReady) {
@@ -311,15 +343,19 @@ export default function AskMeScreen() {
           await sendRobotCommand(spokenText);
           logEvent('ROBOT', `Command execution complete`);
 
+          const storedLang = await AsyncStorage.getItem('selectedLanguage');
+          const activeLang = storedLang || selectedLanguage;
+
           const promptPrefix =
-            selectedLanguage === 'ta-IN'
+            activeLang === 'ta-IN'
               ? 'பதில் தமிழில் கொடு: '
               : 'उत्तर हिंदी में दो: ';
 
           const aiReply = await getGeminiResponse(
             `${promptPrefix}${spokenText}`,
-            selectedLanguage
+            activeLang
           );
+
           logEvent('AI', `Gemini replied: ${aiReply}`);
 
           setReply(aiReply);
@@ -327,10 +363,10 @@ export default function AskMeScreen() {
 
           await new Promise((resolve) => setTimeout(resolve, 300));
 
-          Tts.stop();
-          logEvent('TTS', `Speaking AI reply aloud`);
-          await Tts.setDefaultLanguage(selectedLanguage);
-          logEvent('TTS', `Speaking AI reply in ${selectedLanguage}`);
+          await Tts.stop();
+          await Tts.setDefaultLanguage(activeLang);
+          logEvent('TTS', `Speaking AI reply in ${activeLang}`);
+
           Tts.speak(aiReply, {
             androidParams: {
               KEY_PARAM_STREAM: 'STREAM_MUSIC',
@@ -434,6 +470,33 @@ export default function AskMeScreen() {
     Alert.alert('Sign In', 'Sign in functionality to be implemented');
   };
 
+  const getStatusConfig = () => {
+    if (isLoading) {
+      return {
+        text: 'Processing',
+        subtext: 'AI is crafting a response...',
+        color: '#a78bfa',
+        bgColor: 'rgba(167,139,250,0.35)',
+      };
+    }
+    if (isListening) {
+      return {
+        text: 'Listening',
+        subtext: 'Speak naturally, I\'m all ears',
+        color: '#6366f1',
+        bgColor: 'rgba(99,102,241,0.4)',
+      };
+    }
+    return {
+      text: 'Ready',
+      subtext: 'Tap the mic to start conversation',
+      color: '#8b5cf6',
+      bgColor: 'rgba(139,92,246,0.2)',
+    };
+  };
+
+  const status = getStatusConfig();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0a0a0f" />
@@ -452,24 +515,61 @@ export default function AskMeScreen() {
             <Text style={styles.brandName}>AIVOICY</Text>
           </View>
         </View>
-
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.signInButton} onPress={handleSignIn}>
-            <View style={styles.signInGradient}>
-              <Text style={styles.signInText}>Sign In</Text>
-            </View>
-          </TouchableOpacity>
-          <View style={[styles.statusIndicator,
-          { backgroundColor: mqttStatus === 'Connected' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(250, 204, 21, 0.15)' }]}>
-            <Animated.View style={[
-              styles.statusDot,
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.signInButton}
+              onPress={handleSignIn}
+              activeOpacity={0.8}
+            >
+              <View style={styles.signInGradient}>
+                <Text style={styles.signInText}>Sign In</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => setShowSettings(true)}
+            >
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
+          <View
+            style={[
+              styles.statusIndicator,
               {
-                backgroundColor: mqttStatus === 'Connected' ? '#10b981' : '#facc15',
-                transform: [{ scale: statusPulse }]
-              }
-            ]} />
-            <Text style={[styles.statusLabel, { color: mqttStatus === 'Connected' ? '#10b981' : '#facc15' }]}>
-              {mqttStatus === 'Connected' ? 'Robot Connected' : 'Disconnected - Mock Mode'}
+                backgroundColor:
+                  mqttStatus === 'Connected'
+                    ? 'rgba(16,185,129,0.15)'
+                    : 'rgba(250,204,21,0.15)',
+                borderColor:
+                  mqttStatus === 'Connected'
+                    ? 'rgba(16,185,129,0.4)'
+                    : 'rgba(250,204,21,0.4)',
+              },
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    mqttStatus === 'Connected' ? '#10b981' : '#facc15',
+                  transform: [{ scale: statusPulse }],
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusLabel,
+                {
+                  color:
+                    mqttStatus === 'Connected' ? '#10b981' : '#facc15',
+                },
+              ]}
+            >
+              {mqttStatus === 'Connected'
+                ? 'Robot Connected'
+                : 'Disconnected - Mock Mode'}
             </Text>
           </View>
         </View>
@@ -488,199 +588,122 @@ export default function AskMeScreen() {
           </View>
         ) : null}
 
-        {/* Language Selector */}
-        <TouchableOpacity
-          style={styles.languageSelectorCard}
-          onPress={() => setShowLanguageModal(true)}
-          activeOpacity={0.8}
-        >
-          <View style={styles.languageCardGradient} />
-          <View style={styles.languageCardContent}>
-            <Text style={styles.languageIcon}>🌐</Text>
-            <View style={styles.languageTextContainer}>
-              <Text style={styles.languageLabel}>Language</Text>
-              <Text style={styles.languageValue}>
-                {selectedLanguage === 'hi-IN' ? '🇮🇳 Hindi' : '🇱🇰 Tamil'}
-              </Text>
-            </View>
-            <Text style={styles.languageArrow}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Language Modal */}
-        <Modal
-          visible={showLanguageModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowLanguageModal(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowLanguageModal(false)}
-          >
-            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Language</Text>
-                <TouchableOpacity
-                  onPress={() => setShowLanguageModal(false)}
-                  style={styles.modalCloseButton}
-                >
-                  <Text style={styles.modalCloseText}>✕</Text>
-                </TouchableOpacity>
+        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+          {error ? (
+            <View style={styles.errorContainer}>
+              <View style={styles.errorIcon}>
+                <Text style={styles.errorIconText}>⚠</Text>
               </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.languageOption,
-                  selectedLanguage === 'hi-IN' && styles.languageOptionSelected
-                ]}
-                onPress={async () => {
-                  try {
-                    setLanguageReady(false);
-                    await AsyncStorage.setItem('selectedLanguage', 'hi-IN');
-                    setSelectedLanguage('hi-IN');
-                    await Tts.setDefaultLanguage('hi-IN');
-                    setLanguageReady(true);
-                    setTimeout(() => setShowLanguageModal(false), 300);
-                  } catch (error) {
-                    console.error('Error saving language:', error);
-                  }
-                }}
-              >
-                <Text style={styles.languageOptionFlag}>HI</Text>
-                <Text style={styles.languageOptionText}>Hindi</Text>
-                {selectedLanguage === 'hi-IN' && (
-                  <Text style={styles.languageOptionCheck}>✓</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.languageOption,
-                  selectedLanguage === 'ta-IN' && styles.languageOptionSelected
-                ]}
-                onPress={async () => {
-                  try {
-                    setLanguageReady(false);
-                    await AsyncStorage.setItem('selectedLanguage', 'ta-IN');
-                    setSelectedLanguage('ta-IN');
-                    await Tts.setDefaultLanguage('ta-IN');
-                    setLanguageReady(true);
-                    setTimeout(() => {
-                      setShowLanguageModal(false);
-                      Alert.alert('Language Set', 'Tamil selected. You can now speak.');
-                    }, 700);
-                  } catch (error) {
-                    console.error('Error saving language:', error);
-                  }
-                }}
-              >
-                <Text style={styles.languageOptionFlag}>TA</Text>
-                <Text style={styles.languageOptionText}>Tamil</Text>
-                {selectedLanguage === 'ta-IN' && (
-                  <Text style={styles.languageOptionCheck}>✓</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
-        {/* User Input Section */}
-        <View style={styles.messageCard}>
-          <View style={styles.cardGradientBorder} />
-          <View style={styles.messageHeader}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatarGlow} />
-              <Text style={styles.avatarText}>👤</Text>
-            </View>
-            <View style={styles.messageHeaderText}>
-              <Text style={styles.messageLabel}>Your Speech</Text>
-              <View style={styles.messageBadge}>
+              <View style={styles.errorContent}>
+                <Text style={styles.errorTitle}>Error Occurred</Text>
+                <Text style={styles.errorMessage}>{error}</Text>
               </View>
             </View>
-          </View>
-          <View style={styles.messageContent}>
-            {isListening ? (
-              <View style={styles.listeningIndicator}>
-                <View style={styles.waveform}>
-                  {waveAnims.map((anim, index) => (
-                    <Animated.View
-                      key={index}
-                      style={[
-                        styles.bar,
-                        {
-                          height: anim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [20, 40]
-                          }),
-                          opacity: anim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.4, 1]
+          ) : null}
+
+          {/* 🌌 Center Glowing Orb */}
+          <View style={styles.circleContainer}>
+            <Animated.View
+              style={[
+                styles.glowOrb,
+                {
+                  transform: [
+                    { scale: pulseAnim },
+                    {
+                      rotate: isLoading
+                        ? shimmerAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        })
+                        : '0deg',
+                    },
+                  ],
+                  shadowColor: status.color,
+                  shadowOpacity: isListening ? 1 : isLoading ? 0.8 : 0.5,
+                  shadowRadius: isListening ? 35 : isLoading ? 25 : 15,
+                  backgroundColor: status.bgColor,
+                },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.innerOrb,
+                  {
+                    backgroundColor: isLoading
+                      ? 'rgba(167,139,250,0.8)'
+                      : isListening
+                        ? 'rgba(99,102,241,0.8)'
+                        : 'rgba(60,60,90,0.6)',
+                    shadowColor: status.color,
+                    transform: [
+                      {
+                        scale: isListening
+                          ? pulseAnim.interpolate({
+                            inputRange: [1, 1.15],
+                            outputRange: [1, 1.2],
                           })
-                        }
-                      ]}
-                    />
-                  ))}
-                </View>
-                <View style={styles.listeningTextContainer}>
-                  <View style={styles.listeningPulse} />
-                  <Text style={styles.listeningText}>Listening...</Text>
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.messageText} numberOfLines={2}>
-                {transcript || 'Tap the microphone to start speaking'}
-              </Text>
-            )}
-          </View>
-        </View>
+                          : 1,
+                      },
+                    ],
+                    opacity: shimmerAnim.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 0.7, 1],
+                    }),
+                  },
+                ]}
+              />
+            </Animated.View>
 
-        {/* AI Response Section */}
-        <View style={[styles.messageCard, styles.aiMessageCard]}>
-          <View style={[styles.cardGradientBorder, styles.cardGradientBorderAI]} />
-          <View style={styles.messageHeader}>
-            <View style={[styles.avatarContainer, styles.avatarAI]}>
-              <View style={[styles.avatarGlow, styles.avatarGlowAI]} />
-              <Text style={styles.avatarText}>🤖</Text>
-            </View>
-            <View style={styles.messageHeaderText}>
-              <Text style={styles.messageLabel}>AI Response</Text>
-              <View style={styles.messageBadge}>
-              </View>
-            </View>
+            <Animated.Text
+              style={[
+                styles.centerStatusText,
+                {
+                  opacity: fadeAnim,
+                  color: status.color,
+                }
+              ]}
+            >
+              {status.text}
+            </Animated.Text>
+
+            <Animated.Text
+              style={[
+                styles.centerSubtext,
+                { opacity: fadeAnim }
+              ]}
+            >
+              {status.subtext}
+            </Animated.Text>
+
+            {reply ? (
+              <Animated.Text
+                style={[
+                  styles.centerReplyText,
+                  {
+                    opacity: fadeAnim,
+                  }
+                ]}
+                numberOfLines={5}
+              >
+                {reply}
+              </Animated.Text>
+            ) : null}
           </View>
-          <View style={styles.messageContent}>
-            {isLoading ? (
-              <View style={styles.loadingState}>
-                <View style={styles.typingIndicator}>
-                  <View style={styles.typingDot} />
-                  <View style={styles.typingDot} />
-                  <View style={styles.typingDot} />
-                </View>
-                <Text style={styles.loadingStateText}>Processing...</Text>
-              </View>
-            ) : (
-              <Text style={styles.messageText} numberOfLines={2}>
-                {reply || 'Awaiting your input...'}
-              </Text>
-            )}
-          </View>
-        </View>
+        </Animated.View>
       </Animated.View>
 
       {/* Microphone Control */}
       <View style={styles.controlPanel}>
         <View style={styles.controlPanelGradient} />
+
         <View style={styles.microphoneSection}>
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+          {/* Mic Button + Language Text */}
+          <Animated.View style={{ alignItems: 'center', transform: [{ scale: pulseAnim }] }}>
             <TouchableOpacity
-              style={[
-                styles.micButton,
-                isListening && styles.micButtonActive
-              ]}
+              style={[styles.micButton, isListening && styles.micButtonActive]}
               onPress={handleMicPress}
-              activeOpacity={0.8}>
+              activeOpacity={0.8}
+            >
               <View style={styles.micButtonGlow} />
               <View style={styles.micButtonInner}>
                 {isListening ? (
@@ -692,7 +715,21 @@ export default function AskMeScreen() {
                 )}
               </View>
             </TouchableOpacity>
+
+            {/* This stays clearly below the mic */}
+            <Text style={styles.languageText}>
+              Current Language:{' '}
+              <Text style={{ color: '#ffffff', fontWeight: '700' }}>
+                {selectedLanguage === 'hi-IN'
+                  ? 'Hindi'
+                  : selectedLanguage === 'ta-IN'
+                    ? 'Tamil'
+                    : selectedLanguage}
+              </Text>
+            </Text>
           </Animated.View>
+
+          {/* Speak Controls */}
           <Text style={styles.controlLabel}>
             {isListening ? 'Tap to Stop' : 'Tap to Speak'}
           </Text>
@@ -701,9 +738,21 @@ export default function AskMeScreen() {
           </Text>
         </View>
 
+
         {/* Footer Attribution */}
         <Text style={styles.footerText}>Product of Verve Automation</Text>
       </View>
+      <SettingsModal
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onLanguageChange={(newLang) => {
+          setSelectedLanguage(newLang);
+          Tts.setDefaultLanguage(newLang);
+          logEvent('LANGUAGE', `Updated via settings: ${newLang}`);
+        }}
+      />
+
+
     </SafeAreaView>
   );
 }
@@ -736,6 +785,21 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+
 
   logoContainer: {
     position: 'relative',
@@ -1161,158 +1225,100 @@ const styles = StyleSheet.create({
     borderTopColor: '#1f1f2e',
     textAlign: 'center',
   },
-
-  languageSelectorCard: {
-    backgroundColor: '#12121a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1f1f2e',
-    marginBottom: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: 'hidden',
-  },
-
-  languageCardGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#6366f1',
-    opacity: 0.6,
-  },
-
-  languageCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  languageIcon: {
-    fontSize: 24,
-    marginRight: 14,
-  },
-
-  languageTextContainer: {
-    flex: 1,
-  },
-
-  languageLabel: {
-    fontSize: 12,
-    color: '#8b8b9a',
-    fontWeight: '600',
-    marginBottom: 3,
-  },
-
-  languageValue: {
-    fontSize: 15,
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-
-  languageArrow: {
-    fontSize: 28,
-    color: '#6366f1',
-    fontWeight: '300',
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  modalContent: {
-    width: '85%',
-    backgroundColor: '#12121a',
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#1f1f2e',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-
-  modalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1f1f2e',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-
-  modalCloseText: {
-    fontSize: 18,
-    color: '#d1d1db',
-    fontWeight: '600',
-  },
-
-  languageOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#1f1f2e',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-
-  languageOptionSelected: {
-    borderColor: '#6366f1',
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-  },
-
-  languageOptionFlag: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#2a2a3e',
-    color: '#ffffff',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    fontWeight: '700',
-    marginRight: 14,
+  languageText: {
+    marginTop: 16,
+    color: '#cbd5e1',
     fontSize: 14,
-    letterSpacing: 1,
-  },
-
-  languageOptionText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#ffffff',
     fontWeight: '600',
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  settingsButton: {
+    backgroundColor: '#1f1f2e',
+    padding: 8,
+    borderRadius: 20,
+    marginTop: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
 
-  languageOptionCheck: {
-    fontSize: 20,
-    color: '#6366f1',
-    fontWeight: '700',
+  settingsIcon: {
+    fontSize: 18,
+    color: '#9ca3af',
   },
+
+  circleContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    marginVertical: 40,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 24,
+    marginHorizontal: 16,
+    padding: 24,
+  },
+
+  glowOrb: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+
+  innerOrb: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    shadowOpacity: 0.9,
+    shadowRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+
+  centerStatusText: {
+    marginTop: 28,
+    fontSize: 16,
+    color: '#e2e8f0',
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    opacity: 0.9,
+  },
+
+  centerSubtext: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '500',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+
+  centerReplyText: {
+    marginTop: 20,
+    color: '#f1f5f9',
+    fontSize: 16,
+    fontWeight: '400',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 24,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+
 });
 

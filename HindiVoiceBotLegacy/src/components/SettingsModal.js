@@ -37,7 +37,8 @@ export default function SettingsModal({ visible, onClose, onLanguageChange }) {
     Alert.alert('Settings Saved', 'Your preferences have been updated.');
 
     // 👇 Notify parent
-    if (onLanguageChange) onLanguageChange(lang);
+    if (onLanguageChange) onLanguageChange(lang, mode);
+
 
     onClose();
   } catch (err) {

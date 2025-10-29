@@ -82,12 +82,14 @@ const logEvent = (type, message) => {
 
 export default function AskMeScreen() {
   const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [mqttStatus, setMqttStatus] = useState('Disconnected');
   const [error, setError] = useState("");
   const voiceInitialized = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('hi-IN');
+  const [languageMode, setLanguageMode] = useState('manual');
   const [languageReady, setLanguageReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -231,12 +233,15 @@ export default function AskMeScreen() {
     const loadLanguage = async () => {
       try {
         const savedLang = await AsyncStorage.getItem('selectedLanguage');
+        const savedMode = await AsyncStorage.getItem('languageMode');
         const langToUse = savedLang || 'hi-IN';
+        const modeToUse = savedMode || 'manual';
 
-        console.log('🔄 Restoring saved language:', langToUse);
+        console.log('🔄 Restoring saved language:', langToUse, '| mode:', modeToUse);
         setSelectedLanguage(langToUse);
-        await Tts.setDefaultLanguage(langToUse);
+        setLanguageMode(modeToUse);
 
+        await Tts.setDefaultLanguage(langToUse);
         setLanguageReady(true);
       } catch (error) {
         console.error('Error loading saved language:', error);
@@ -343,8 +348,15 @@ export default function AskMeScreen() {
           await sendRobotCommand(spokenText);
           logEvent('ROBOT', `Command execution complete`);
 
-          const storedLang = await AsyncStorage.getItem('selectedLanguage');
-          const activeLang = storedLang || selectedLanguage;
+          let activeLang = selectedLanguage;
+
+          if (languageMode === 'auto') {
+            activeLang = detectLanguageFromText(spokenText);
+            console.log(`🌐 Auto-detected language: ${activeLang}`);
+            setSelectedLanguage(activeLang);
+            await AsyncStorage.setItem('selectedLanguage', activeLang);
+          }
+
 
           const promptPrefix =
             activeLang === 'ta-IN'
@@ -418,9 +430,11 @@ export default function AskMeScreen() {
   }, []);
 
   // Start Listening for Speech
-  const startListening = async () => {
-    console.log('StartListening called');
-    const currentLang = selectedLanguage;
+const startListening = async () => {
+  console.log('StartListening called');
+  const currentLang =
+    languageMode === 'auto' ? 'en-US' : selectedLanguage;
+
 
     const hasPermission = await requestMicPermission();
     if (!hasPermission) return;
@@ -496,6 +510,32 @@ export default function AskMeScreen() {
   };
 
   const status = getStatusConfig();
+
+ const detectLanguageFromText = (text = '') => {
+  const lower = text.toLowerCase();
+
+  // --- Tamil script detection ---
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
+  // Common Tamil words (romanized)
+  if (/\b(vanakkam|enna|epdi|solra|ungal|paaru|seri|podu|pa|da|illai|ama)\b/.test(lower))
+    return 'ta-IN';
+
+  // --- Hindi script detection ---
+  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
+  // Common Hindi words (romanized)
+  if (/\b(namaste|kaise|hai|nahi|karo|batao|tum|mera|aap|haan|nahin|karna|jao|banao)\b/.test(lower))
+    return 'hi-IN';
+
+  // --- Sinhala (optional) ---
+  if (/[\u0D80-\u0DFF]/.test(text)) return 'si-LK';
+  if (/\b(koho|mage|oya|hondai|karanna|kohomada|hari|eka|kavada|nadda)\b/.test(lower))
+    return 'si-LK';
+
+  // --- Default fallback ---
+  return 'en-US';
+};
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -718,13 +758,19 @@ export default function AskMeScreen() {
 
             {/* This stays clearly below the mic */}
             <Text style={styles.languageText}>
-              Current Language:{' '}
+              Mode:{' '}
+              <Text style={{ color: '#8b5cf6', fontWeight: '700' }}>
+                {languageMode === 'auto' ? 'Auto' : 'Manual'}
+              </Text>{' '}
+              • Language:{' '}
               <Text style={{ color: '#ffffff', fontWeight: '700' }}>
                 {selectedLanguage === 'hi-IN'
                   ? 'Hindi'
                   : selectedLanguage === 'ta-IN'
                     ? 'Tamil'
-                    : selectedLanguage}
+                    : selectedLanguage === 'en-US'
+                      ? 'English'
+                      : selectedLanguage}
               </Text>
             </Text>
           </Animated.View>
@@ -745,14 +791,13 @@ export default function AskMeScreen() {
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
-        onLanguageChange={(newLang) => {
+        onLanguageChange={(newLang, newMode) => {
           setSelectedLanguage(newLang);
+          setLanguageMode(newMode);
           Tts.setDefaultLanguage(newLang);
-          logEvent('LANGUAGE', `Updated via settings: ${newLang}`);
+          logEvent('LANGUAGE', `Updated via settings: ${newLang} (${newMode})`);
         }}
       />
-
-
     </SafeAreaView>
   );
 }

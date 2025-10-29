@@ -3,7 +3,7 @@ import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
 import { getGeminiResponse } from '../services/geminiService';
 import { sendRobotCommand } from '../services/RobotMotionService';
-import { Picker } from '@react-native-picker/picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   SafeAreaView,
@@ -89,6 +89,7 @@ export default function AskMeScreen() {
   const voiceInitialized = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('hi-IN');
+  const [languageReady, setLanguageReady] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -226,9 +227,34 @@ export default function AskMeScreen() {
     );
   }, [selectedLanguage]);
 
-  // Initialize Voice
   useEffect(() => {
-    console.log('Initializing Voice & TTS modules...');
+    const loadLanguage = async () => {
+      try {
+        const savedLang = await AsyncStorage.getItem('selectedLanguage');
+        const langToUse = savedLang || 'hi-IN';
+
+        console.log('🔄 Restoring saved language:', langToUse);
+        setSelectedLanguage(langToUse);
+        await Tts.setDefaultLanguage(langToUse);
+
+        // re-init ready state
+        setLanguageReady(true);
+      } catch (error) {
+        console.error('Error loading saved language:', error);
+        setLanguageReady(true);
+      }
+    };
+
+    loadLanguage();
+  }, []);
+
+  useEffect(() => {
+    if (!languageReady) {
+      console.log('⏳ Waiting for language to load before initializing...');
+      return;
+    }
+
+    console.log('✅ Language ready. Initializing Voice & TTS...');
     console.log('Voice module:', Voice);
 
     if (!Voice) {
@@ -240,7 +266,7 @@ export default function AskMeScreen() {
     const initTts = async () => {
       try {
         await Tts.getInitStatus();
-        await Tts.setDefaultLanguage('hi-IN');
+        await Tts.setDefaultLanguage(selectedLanguage);
         await Tts.setDefaultRate(0.55);
         await Tts.setDefaultPitch(0.95);
         Tts.addEventListener('tts-finish', () => {
@@ -257,12 +283,12 @@ export default function AskMeScreen() {
     };
     initTts();
 
-    Voice.onSpeechStart = (e) => {
+    Voice.onSpeechStart = () => {
       logEvent('VOICE', 'Speech recognition started');
       setError('');
     };
 
-    Voice.onSpeechEnd = (e) => {
+    Voice.onSpeechEnd = () => {
       logEvent('VOICE', 'Speech recognition ended');
       setIsListening(false);
     };
@@ -276,31 +302,30 @@ export default function AskMeScreen() {
         logEvent('AI', `Sending prompt to Gemini: ${spokenText}`);
 
         try {
-          if (isListening) {
-            await stopListening();
-          }
+          if (isListening) await stopListening();
 
           setIsLoading(true);
-          setReply('Gemini is thinking...')
+          setReply('Gemini is thinking...');
 
           logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
           await sendRobotCommand(spokenText);
           logEvent('ROBOT', `Command execution complete`);
-
 
           const promptPrefix =
             selectedLanguage === 'ta-IN'
               ? 'பதில் தமிழில் கொடு: '
               : 'उत्तर हिंदी में दो: ';
 
-          const aiReply = await getGeminiResponse(`${promptPrefix}${spokenText}`, selectedLanguage);
+          const aiReply = await getGeminiResponse(
+            `${promptPrefix}${spokenText}`,
+            selectedLanguage
+          );
           logEvent('AI', `Gemini replied: ${aiReply}`);
 
           setReply(aiReply);
-
           setIsLoading(false);
 
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 300));
 
           Tts.stop();
           logEvent('TTS', `Speaking AI reply aloud`);
@@ -313,46 +338,43 @@ export default function AskMeScreen() {
           });
         } catch (err) {
           console.error('Gemini processing error:', err);
-          setReply('सर्वर से कनेक्शन में समस्या हुई।');
-          Tts.speak('सर्वर से कनेक्शन में समस्या हुई।');
+          const errMsg =
+            selectedLanguage === 'ta-IN'
+              ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
+              : 'सर्वर से कनेक्शन में समस्या हुई।';
+          setReply(errMsg);
+          Tts.speak(errMsg);
         }
       }
     };
 
     Voice.onSpeechPartialResults = (e) => {
       console.log('Partial Speech Results: ', e);
-      if (e.value && e.value[0]) {
-        setTranscript(e.value[0]);
-      }
+      if (e.value && e.value[0]) setTranscript(e.value[0]);
     };
 
     Voice.onSpeechError = (e) => {
       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
-
       let errorMessage = 'An error occurred while detecting your speech.';
-      if (e.error && e.error.message) {
+      if (e.error?.message) {
         errorMessage = e.error.message.toLowerCase().includes('no_match')
           ? 'I could not understand that. Please try again.'
           : e.error.message;
       }
-
       setError(errorMessage);
       Alert.alert('Speech Recognition Error', errorMessage);
       setIsListening(false);
     };
-
 
     voiceInitialized.current = true;
     console.log('Voice module initialized');
 
     return () => {
       if (voiceInitialized.current && Voice) {
-        Voice.destroy()
-          .then(Voice.removeAllListeners)
-          .catch(console.error);
+        Voice.destroy().then(Voice.removeAllListeners).catch(console.error);
       }
     };
-  }, []);
+  }, [languageReady]);
 
   useEffect(() => {
     const connected = checkRobotConnection();
@@ -362,40 +384,28 @@ export default function AskMeScreen() {
   // Start Listening for Speech
   const startListening = async () => {
     console.log('StartListening called');
-
-    if (!Voice || typeof Voice.start !== 'function') {
-      Alert.alert('Voice Engine Error', 'Speech recognition is not available on this device.');
-      setError('Voice module not available.');
-      return;
-    }
+    const currentLang = selectedLanguage;
 
     const hasPermission = await requestMicPermission();
-    console.log('Mic permission:', hasPermission);
-
-    if (!hasPermission) {
-      Alert.alert('Permission Required', 'Microphone permission is required for voice recognition');
-      return;
-    }
+    if (!hasPermission) return;
 
     try {
       setTranscript('');
       setError('');
 
-      await Tts.setDefaultLanguage(selectedLanguage);
-      logEvent('LANGUAGE', `Confirmed active language: ${selectedLanguage}`);
+      await Tts.setDefaultLanguage(currentLang);
+      logEvent('LANGUAGE', `Confirmed active language: ${currentLang}`);
 
       setIsListening(true);
-      await Voice.start(selectedLanguage);
+      await Voice.start(currentLang);
 
-      logEvent('VOICE', `Voice recognition started in ${selectedLanguage}`);
-      console.log(`Voice recognition started with language: ${selectedLanguage}`);
+      logEvent('VOICE', `Voice recognition started in ${currentLang}`);
     } catch (e) {
-      console.error('There was an error in voice recognition: ', e);
+      console.error('Error starting voice recognition: ', e);
       setError('Error starting voice recognition: ' + e.message);
       setIsListening(false);
     }
   };
-
 
   // Stop Listening for Speech
   const stopListening = async () => {
@@ -525,12 +535,20 @@ export default function AskMeScreen() {
                   styles.languageOption,
                   selectedLanguage === 'hi-IN' && styles.languageOptionSelected
                 ]}
-                onPress={() => {
-                  setSelectedLanguage('hi-IN');
-                  setTimeout(() => setShowLanguageModal(false), 300);
+                onPress={async () => {
+                  try {
+                    setLanguageReady(false);
+                    await AsyncStorage.setItem('selectedLanguage', 'hi-IN');
+                    setSelectedLanguage('hi-IN');
+                    await Tts.setDefaultLanguage('hi-IN');
+                    setLanguageReady(true);
+                    setTimeout(() => setShowLanguageModal(false), 300);
+                  } catch (error) {
+                    console.error('Error saving language:', error);
+                  }
                 }}
               >
-                <Text style={styles.languageOptionFlag}>🇮🇳</Text>
+                <Text style={styles.languageOptionFlag}>HI</Text>
                 <Text style={styles.languageOptionText}>Hindi</Text>
                 {selectedLanguage === 'hi-IN' && (
                   <Text style={styles.languageOptionCheck}>✓</Text>
@@ -542,12 +560,23 @@ export default function AskMeScreen() {
                   styles.languageOption,
                   selectedLanguage === 'ta-IN' && styles.languageOptionSelected
                 ]}
-                onPress={() => {
-                  setSelectedLanguage('ta-IN');
-                  setTimeout(() => setShowLanguageModal(false), 300);
+                onPress={async () => {
+                  try {
+                    setLanguageReady(false);
+                    await AsyncStorage.setItem('selectedLanguage', 'ta-IN');
+                    setSelectedLanguage('ta-IN');
+                    await Tts.setDefaultLanguage('ta-IN');
+                    setLanguageReady(true);
+                    setTimeout(() => {
+                      setShowLanguageModal(false);
+                      Alert.alert('Language Set', 'Tamil selected. You can now speak.');
+                    }, 700);
+                  } catch (error) {
+                    console.error('Error saving language:', error);
+                  }
                 }}
               >
-                <Text style={styles.languageOptionFlag}>🇱🇰</Text>
+                <Text style={styles.languageOptionFlag}>TA</Text>
                 <Text style={styles.languageOptionText}>Tamil</Text>
                 {selectedLanguage === 'ta-IN' && (
                   <Text style={styles.languageOptionCheck}>✓</Text>
@@ -1260,8 +1289,17 @@ const styles = StyleSheet.create({
   },
 
   languageOptionFlag: {
-    fontSize: 28,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#2a2a3e',
+    color: '#ffffff',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontWeight: '700',
     marginRight: 14,
+    fontSize: 14,
+    letterSpacing: 1,
   },
 
   languageOptionText: {

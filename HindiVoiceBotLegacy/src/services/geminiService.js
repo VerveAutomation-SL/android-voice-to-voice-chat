@@ -6,7 +6,7 @@ import { GEMINI_API_KEY } from '@env';
  * @param {string} language - Optional language code like 'hi-IN' or 'ta-IN'
  * @returns {Promise<string>} - Gemini-generated reply text
  */
-export async function getGeminiResponse(prompt, language = 'hi-IN') {
+export async function getGeminiResponse(prompt, language ) {
   if (!prompt || !prompt.trim()) return 'कृपया कुछ बोलिए।';
 
   try {

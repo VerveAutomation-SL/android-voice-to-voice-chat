@@ -333,73 +333,111 @@ export default function AskMeScreen() {
     Voice.onSpeechResults = async (e) => {
       logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
 
-      if (e.value && e.value[0]) {
-        const spokenText = e.value[0];
-        setTranscript(spokenText);
-        logEvent('AI', `Sending prompt to Gemini: ${spokenText}`);
+      if (!e.value || !e.value[0]) return;
+      const spokenText = (e.value[0] || transcript || '').trim();
+      setTranscript(spokenText);
 
-        try {
-          if (isListening) await stopListening();
+      try {
+        if (isListening) await stopListening();
 
-          setIsLoading(true);
-          setReply('Gemini is thinking...');
+        setIsLoading(true);
+        setReply('Gemini is thinking...');
 
-          logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
-          await sendRobotCommand(spokenText);
-          logEvent('ROBOT', `Command execution complete`);
+        logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
+        await sendRobotCommand(spokenText);
+        logEvent('ROBOT', `Command execution complete`);
 
-          let activeLang = selectedLanguage;
+        // 🔍 Step 1: Detect and correct language via Gemini
+        let activeLang = selectedLanguage;
+        let detectedLang = activeLang;
 
-          if (languageMode === 'auto') {
-            activeLang = detectLanguageFromText(spokenText);
-            console.log(`🌐 Auto-detected language: ${activeLang}`);
-            setSelectedLanguage(activeLang);
-            await AsyncStorage.setItem('selectedLanguage', activeLang);
+        if (languageMode === 'auto') {
+          const detectPrompt = `
+You are a multilingual text detector. 
+The user might have spoken in Sinhala, Tamil, Hindi, Malay, Chinese, or English. 
+The input text may contain distorted English words caused by speech recognition errors (e.g., "Obama komakda" = Sinhala "ඔබගේ නම කුමක් ද?").
+Identify the real language and rewrite it in its correct native script form (if possible). 
+Return only a short JSON object like:
+{"language": "si-LK", "correctedText": "ඔබගේ නම කුමක් ද?"}
+
+User said: ${spokenText}`;
+
+          const correctionResponse = await getGeminiResponse(detectPrompt, 'en-US');
+
+          try {
+            const parsed = JSON.parse(correctionResponse.match(/\{[\s\S]*\}/)?.[0]);
+            if (parsed?.language && parsed?.correctedText) {
+              detectedLang = parsed.language;
+              setTranscript(parsed.correctedText);
+              console.log('🌐 Gemini auto-detected language:', parsed.language);
+              console.log('📝 Corrected text:', parsed.correctedText);
+            }
+          } catch (jsonErr) {
+            console.warn('⚠️ Could not parse Gemini detection JSON, fallbacking to regex detection.');
+            detectedLang = detectLanguageFromText(spokenText);
           }
 
-
-          const promptPrefix =
-            activeLang === 'ta-IN'
-              ? 'பதில் தமிழில் கொடு: '
-              : 'उत्तर हिंदी में दो: ';
-
-          const aiReply = await getGeminiResponse(
-            `${promptPrefix}${spokenText}`,
-            activeLang
-          );
-
-          logEvent('AI', `Gemini replied: ${aiReply}`);
-
-          setReply(aiReply);
-          setIsLoading(false);
-
-          await new Promise((resolve) => setTimeout(resolve, 300));
-
-          await Tts.stop();
-          await Tts.setDefaultLanguage(activeLang);
-          logEvent('TTS', `Speaking AI reply in ${activeLang}`);
-
-          Tts.speak(aiReply, {
-            androidParams: {
-              KEY_PARAM_STREAM: 'STREAM_MUSIC',
-            },
-          });
-        } catch (err) {
-          console.error('Gemini processing error:', err);
-          const errMsg =
-            selectedLanguage === 'ta-IN'
-              ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
-              : 'सर्वर से कनेक्शन में समस्या हुई।';
-          setReply(errMsg);
-          Tts.speak(errMsg);
+          activeLang = detectedLang;
+          setSelectedLanguage(activeLang);
+          await AsyncStorage.setItem('selectedLanguage', activeLang);
         }
+
+        // 🧠 Step 2: Get actual AI reply in detected language
+        const promptPrefixMap = {
+          'hi-IN': 'Please reply ONLY in Hindi (Devanagari script). Example: "कैसे हो?"\nAnswer in Hindi: ',
+          'ta-IN': 'Please reply ONLY in Tamil (Tamil script). Example: "வணக்கம், எப்படி இருக்கீங்க?"\nAnswer in Tamil: ',
+          'si-LK': 'Please reply ONLY in Sinhala (Sinhala script). Example: "ඔබට කොහොම ද?"\nAnswer in Sinhala: ',
+          'ms-MY': 'Please reply ONLY in Malay (Bahasa Melayu). Example: "Apa khabar?"\nAnswer in Malay: ',
+          'zh-CN': '请只用中文回答。例如："你好，你怎么样？"\n请用中文回答：',
+          'en-US': 'Reply ONLY in English: ',
+        };
+
+        const promptPrefix = promptPrefixMap[activeLang] || promptPrefixMap['en-US'];
+
+        const correctedText = transcript || spokenText;
+
+        const aiReply = await getGeminiResponse(
+          `${promptPrefix}\nUser said: ${correctedText}\nPlease answer naturally in the same language.`,
+          activeLang
+        );
+
+
+        logEvent('AI', `Gemini replied: ${aiReply}`);
+        setReply(aiReply);
+        setIsLoading(false);
+
+        // 🔊 Step 3: Speak result
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await Tts.stop();
+        await Tts.setDefaultLanguage(activeLang);
+        logEvent('TTS', `Speaking AI reply in ${activeLang}`);
+        Tts.speak(aiReply, { androidParams: { KEY_PARAM_STREAM: 'STREAM_MUSIC' } });
+
+      } catch (err) {
+        console.error('Gemini processing error:', err);
+        const errMsg =
+          selectedLanguage === 'ta-IN'
+            ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
+            : 'सर्वर से कनेक्शन में समस्या हुई।';
+        setReply(errMsg);
+        Tts.speak(errMsg);
       }
     };
 
-    Voice.onSpeechPartialResults = (e) => {
-      console.log('Partial Speech Results: ', e);
-      if (e.value && e.value[0]) setTranscript(e.value[0]);
-    };
+
+
+    let partialBuffer = '';
+
+Voice.onSpeechPartialResults = (e) => {
+  if (e.value && e.value.length > 0) {
+    const current = e.value[e.value.length - 1].trim();
+    if (current && current !== partialBuffer) {
+      partialBuffer = current;
+      setTranscript(partialBuffer);
+      console.log('🌀 Accumulating speech:', partialBuffer);
+    }
+  }
+};
 
     Voice.onSpeechError = (e) => {
       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
@@ -430,11 +468,11 @@ export default function AskMeScreen() {
   }, []);
 
   // Start Listening for Speech
-const startListening = async () => {
-  console.log('StartListening called');
-  const currentLang =
-    languageMode === 'auto' ? 'en-US' : selectedLanguage;
-
+  const startListening = async () => {
+    console.log('StartListening called');
+    const currentLang =  languageMode === 'auto'
+    ? selectedLanguage  
+    : selectedLanguage;
 
     const hasPermission = await requestMicPermission();
     if (!hasPermission) return;
@@ -447,7 +485,21 @@ const startListening = async () => {
       logEvent('LANGUAGE', `Confirmed active language: ${currentLang}`);
 
       setIsListening(true);
-      await Voice.start(currentLang);
+
+    // 🌐 Dynamic language start (for Auto Mode)
+    if (languageMode === 'auto') {
+      const lastLang = await AsyncStorage.getItem('selectedLanguage');
+      if (lastLang) {
+        console.log(`🌐 Using last detected language: ${lastLang}`);
+        await Voice.start(lastLang);
+      } else {
+        console.log('🌍 Defaulting to English (en-US)');
+        await Voice.start('en-US');
+      }
+    } else {
+      await Voice.start(selectedLanguage);
+    }
+
 
       logEvent('VOICE', `Voice recognition started in ${currentLang}`);
     } catch (e) {
@@ -455,6 +507,11 @@ const startListening = async () => {
       setError('Error starting voice recognition: ' + e.message);
       setIsListening(false);
     }
+
+    logEvent(
+      'VOICE',
+      `🎙️ Listening in: ${currentLang} (${languageMode === 'auto' ? 'Auto' : 'Manual'} Mode)`
+    );
   };
 
   // Stop Listening for Speech
@@ -511,31 +568,44 @@ const startListening = async () => {
 
   const status = getStatusConfig();
 
- const detectLanguageFromText = (text = '') => {
-  const lower = text.toLowerCase();
+  const detectLanguageFromText = (text = '') => {
+    const lower = text.toLowerCase();
 
-  // --- Tamil script detection ---
-  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
-  // Common Tamil words (romanized)
-  if (/\b(vanakkam|enna|epdi|solra|ungal|paaru|seri|podu|pa|da|illai|ama)\b/.test(lower))
-    return 'ta-IN';
+    // --- Tamil script or keywords ---
+    if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
+    if (/\b(vanakkam|enna|epdi|solra|ungal|paaru|seri|podu|pa|da|illai|ama)\b/.test(lower))
+      return 'ta-IN';
 
-  // --- Hindi script detection ---
-  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
-  // Common Hindi words (romanized)
-  if (/\b(namaste|kaise|hai|nahi|karo|batao|tum|mera|aap|haan|nahin|karna|jao|banao)\b/.test(lower))
-    return 'hi-IN';
+    // --- Hindi script or keywords ---
+    if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
+    if (/\b(namaste|kaise|hai|nahi|karo|batao|tum|mera|aap|haan|nahin|karna|jao|banao)\b/.test(lower))
+      return 'hi-IN';
 
-  // --- Sinhala (optional) ---
-  if (/[\u0D80-\u0DFF]/.test(text)) return 'si-LK';
-  if (/\b(koho|mage|oya|hondai|karanna|kohomada|hari|eka|kavada|nadda)\b/.test(lower))
-    return 'si-LK';
-
-  // --- Default fallback ---
-  return 'en-US';
-};
+    // --- Sinhala script or keywords ---
+    if (/[\u0D80-\u0DFF]/.test(text)) return 'si-LK';
+    if (/\b(koho|kohomada|kohomadha|kohomda|mage|hondai|karanna|nadda|hari|eka|kavada|suba|ayubowan|oya|thiyenawa|kumakda|komakda|obage)\b/.test(lower))
+      return 'si-LK';
+    // Handle common misheard English versions of Sinhala
+    if (/\b(obama|coho|komakda|kumakda|kobama|kobam|obama komakda|coho mother|kohomother|kaho mother)\b/.test(lower))
+      return 'si-LK';
 
 
+    // --- Malay (Roman script only, common words) ---
+    if (/\b(selamat|apa|khabar|baik|terima|kasih|makan|minum|nama|anda|saya|boleh)\b/.test(lower))
+      return 'ms-MY';
+
+    // --- Chinese script or pinyin (simplified) ---
+    if (/[\u4E00-\u9FFF]/.test(text)) return 'zh-CN';
+    if (/\b(nihao|xiexie|zaijian|hao|zhongguo|pengyou|shuo|hen|de)\b/.test(lower))
+      return 'zh-CN';
+
+    // --- English script or keywords ---
+    if (/\b(hello|hi|how|thanks|good|morning|evening|yes|no|please|okay)\b/.test(lower))
+      return 'en-US';
+
+    // --- Default fallback ---
+    return 'en-US';
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1366,4 +1436,3 @@ const styles = StyleSheet.create({
   },
 
 });
-

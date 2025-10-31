@@ -8,3 +8,12 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Add any project specific keep options here:
+
+# Prevent stripping of Google SpeechRecognizer and TTS language resources
+-keep class android.speech.** { *; }
+-keep class com.google.android.tts.** { *; }
+-keep class com.google.android.gms.speech.** { *; }
+-keep class android.speech.tts.** { *; }
+-keep class android.speech.SpeechRecognizer { *; }
+-keepattributes *Annotation*
+

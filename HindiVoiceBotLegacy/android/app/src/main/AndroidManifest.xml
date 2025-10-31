@@ -17,6 +17,7 @@
       android:supportsRtl="true"
       tools:replace="android:appComponentFactory"
       android:appComponentFactory="androidx.core.app.CoreComponentFactory">
+      <meta-data android:name="locale_config" android:resource="@xml/locales_config" />
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

@@ -331,100 +331,110 @@ export default function AskMeScreen() {
     };
 
     Voice.onSpeechResults = async (e) => {
-      logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
+  logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
 
-      if (!e.value || !e.value[0]) return;
-      const spokenText = (e.value[0] || transcript || '').trim();
-      setTranscript(spokenText);
+  if (!e.value || !e.value[0]) return;
+  const spokenText = (e.value[0] || transcript || '').trim();
+  setTranscript(spokenText);
 
-      try {
-        if (isListening) await stopListening();
+  try {
+    // 🚀 Non-blocking stop
+    if (isListening) stopListening();
 
-        setIsLoading(true);
-        setReply('Gemini is thinking...');
+    setIsLoading(true);
+    setReply('Verve AIVoicy is thinking...');
 
-        logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
-        await sendRobotCommand(spokenText);
-        logEvent('ROBOT', `Command execution complete`);
+    // 🧠 Run robot + AI concurrently for speed
+    const robotPromise = sendRobotCommand(spokenText);
+    logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
 
-        // 🔍 Step 1: Detect and correct language via Gemini
-        let activeLang = selectedLanguage;
-        let detectedLang = activeLang;
+    // 🔍 Language detection logic (cache-aware)
+    let activeLang = selectedLanguage;
+    let detectedLang = activeLang;
 
-        if (languageMode === 'auto') {
-          const detectPrompt = `
-You are a multilingual text detector. 
-The user might have spoken in Sinhala, Tamil, Hindi, Malay, Chinese, or English. 
-The input text may contain distorted English words caused by speech recognition errors (e.g., "Obama komakda" = Sinhala "ඔබගේ නම කුමක් ද?").
-Identify the real language and rewrite it in its correct native script form (if possible). 
-Return only a short JSON object like:
+    if (languageMode === 'auto') {
+      const lastLangJSON = await AsyncStorage.getItem('selectedLanguage');
+      const lastLang = lastLangJSON ? JSON.parse(lastLangJSON) : null;
+
+      // ✅ Reuse language if used within 1 min
+      if (lastLang && Date.now() - lastLang.timestamp < 60000) {
+        detectedLang = lastLang.value;
+        logEvent('LANGUAGE', `♻ Using cached detected language: ${detectedLang}`);
+      } else {
+        const detectPrompt = `
+You are a multilingual text detector.
+The user might have spoken in Sinhala, Tamil, Hindi, Malay, Chinese, or English.
+The input may contain distorted English words (e.g., "Obama komakda" = Sinhala "ඔබගේ නම කුමක් ද?").
+Return only JSON:
 {"language": "si-LK", "correctedText": "ඔබගේ නම කුමක් ද?"}
-
 User said: ${spokenText}`;
 
-          const correctionResponse = await getGeminiResponse(detectPrompt, 'en-US');
+        const correctionResponse = await getGeminiResponse(detectPrompt, 'en-US');
 
-          try {
-            const parsed = JSON.parse(correctionResponse.match(/\{[\s\S]*\}/)?.[0]);
-            if (parsed?.language && parsed?.correctedText) {
-              detectedLang = parsed.language;
-              setTranscript(parsed.correctedText);
-              console.log('🌐 Gemini auto-detected language:', parsed.language);
-              console.log('📝 Corrected text:', parsed.correctedText);
-            }
-          } catch (jsonErr) {
-            console.warn('⚠️ Could not parse Gemini detection JSON, fallbacking to regex detection.');
-            detectedLang = detectLanguageFromText(spokenText);
+        try {
+          const parsed = JSON.parse(correctionResponse.match(/\{[\s\S]*\}/)?.[0]);
+          if (parsed?.language && parsed?.correctedText) {
+            detectedLang = parsed.language;
+            setTranscript(parsed.correctedText);
+            console.log('🌐 Verve AIVoicy auto-detected language:', parsed.language);
+            console.log('📝 Corrected text:', parsed.correctedText);
+
+            await AsyncStorage.setItem(
+              'selectedLanguage',
+              JSON.stringify({ value: detectedLang, timestamp: Date.now() })
+            );
           }
-
-          activeLang = detectedLang;
-          setSelectedLanguage(activeLang);
-          await AsyncStorage.setItem('selectedLanguage', activeLang);
+        } catch (jsonErr) {
+          console.warn('⚠️ Could not parse Gemini detection JSON; using regex fallback.');
+          detectedLang = detectLanguageFromText(spokenText);
         }
-
-        // 🧠 Step 2: Get actual AI reply in detected language
-        const promptPrefixMap = {
-          'hi-IN': 'Please reply ONLY in Hindi (Devanagari script). Example: "कैसे हो?"\nAnswer in Hindi: ',
-          'ta-IN': 'Please reply ONLY in Tamil (Tamil script). Example: "வணக்கம், எப்படி இருக்கீங்க?"\nAnswer in Tamil: ',
-          'si-LK': 'Please reply ONLY in Sinhala (Sinhala script). Example: "ඔබට කොහොම ද?"\nAnswer in Sinhala: ',
-          'ms-MY': 'Please reply ONLY in Malay (Bahasa Melayu). Example: "Apa khabar?"\nAnswer in Malay: ',
-          'zh-CN': '请只用中文回答。例如："你好，你怎么样？"\n请用中文回答：',
-          'en-US': 'Reply ONLY in English: ',
-        };
-
-        const promptPrefix = promptPrefixMap[activeLang] || promptPrefixMap['en-US'];
-
-        const correctedText = transcript || spokenText;
-
-        const aiReply = await getGeminiResponse(
-          `${promptPrefix}\nUser said: ${correctedText}\nPlease answer naturally in the same language.`,
-          activeLang
-        );
-
-
-        logEvent('AI', `Gemini replied: ${aiReply}`);
-        setReply(aiReply);
-        setIsLoading(false);
-
-        // 🔊 Step 3: Speak result
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        await Tts.stop();
-        await Tts.setDefaultLanguage(activeLang);
-        logEvent('TTS', `Speaking AI reply in ${activeLang}`);
-        Tts.speak(aiReply, { androidParams: { KEY_PARAM_STREAM: 'STREAM_MUSIC' } });
-
-      } catch (err) {
-        console.error('Gemini processing error:', err);
-        const errMsg =
-          selectedLanguage === 'ta-IN'
-            ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
-            : 'सर्वर से कनेक्शन में समस्या हुई।';
-        setReply(errMsg);
-        Tts.speak(errMsg);
       }
+
+      activeLang = detectedLang;
+      setSelectedLanguage(activeLang);
+    }
+
+    // 🧠 Step 2: Get AI reply
+    const promptPrefixMap = {
+      'hi-IN': 'Please reply ONLY in Hindi (Devanagari). Example: "कैसे हो?"',
+      'ta-IN': 'Please reply ONLY in Tamil (Tamil script). Example: "வணக்கம், எப்படி இருக்கீங்க?"',
+      'si-LK': 'Please reply ONLY in Sinhala (Sinhala script). Example: "ඔබට කොහොම ද?"',
+      'ms-MY': 'Please reply ONLY in Malay. Example: "Apa khabar?"',
+      'zh-CN': '请只用中文回答。例如："你好，你怎么样？"',
+      'en-US': 'Reply ONLY in English:',
     };
 
+    const promptPrefix = promptPrefixMap[activeLang] || promptPrefixMap['en-US'];
+    const correctedText = transcript || spokenText;
 
+    // 🚀 Parallelize both actions
+    const [_, aiReply] = await Promise.all([
+      robotPromise,
+      getGeminiResponse(
+        `${promptPrefix}\nUser said: ${correctedText}\nPlease answer naturally.`,
+        activeLang
+      ),
+    ]);
+
+    logEvent('AI', `Gemini replied: ${aiReply}`);
+    setReply(aiReply);
+    setIsLoading(false);
+
+    // 🔊 Step 3: Speak result faster
+    Tts.stop();
+    await Tts.setDefaultLanguage(activeLang);
+    logEvent('TTS', `Speaking AI reply in ${activeLang}`);
+    Tts.speak(aiReply, { androidParams: { KEY_PARAM_STREAM: 'STREAM_MUSIC' } });
+  } catch (err) {
+    console.error('Gemini processing error:', err);
+    const errMsg =
+      selectedLanguage === 'ta-IN'
+        ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
+        : 'सर्वर से कनेक्शन में समस्या हुई।';
+    setReply(errMsg);
+    Tts.speak(errMsg);
+  }
+};
 
     let partialBuffer = '';
 

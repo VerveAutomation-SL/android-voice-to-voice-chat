@@ -232,9 +232,22 @@ export default function AskMeScreen() {
   useEffect(() => {
     const loadLanguage = async () => {
       try {
-        const savedLang = await AsyncStorage.getItem('selectedLanguage');
+        let savedLangJSON = await AsyncStorage.getItem('selectedLanguage');
+        let savedLang = 'hi-IN';
+
+        if (savedLangJSON) {
+          try {
+            const parsed = JSON.parse(savedLangJSON);
+            savedLang = parsed?.value || savedLangJSON;
+          } catch {
+            console.warn('⚠️ Invalid JSON found in AsyncStorage. Resetting key.');
+            await AsyncStorage.removeItem('selectedLanguage');
+            savedLang = savedLangJSON; 
+          }
+        }
+
         const savedMode = await AsyncStorage.getItem('languageMode');
-        const langToUse = savedLang || 'hi-IN';
+        const langToUse = savedLang;
         const modeToUse = savedMode || 'manual';
 
         console.log('🔄 Restoring saved language:', langToUse, '| mode:', modeToUse);
@@ -331,123 +344,156 @@ export default function AskMeScreen() {
     };
 
     Voice.onSpeechResults = async (e) => {
-  logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
+      logEvent('VOICE', `Speech results received: ${JSON.stringify(e.value)}`);
 
-  if (!e.value || !e.value[0]) return;
-  const spokenText = (e.value[0] || transcript || '').trim();
-  setTranscript(spokenText);
+      if (!e.value || !e.value[0]) return;
+      const spokenText = (e.value[0] || transcript || '').trim();
+      setTranscript(spokenText);
 
-  try {
-    // 🚀 Non-blocking stop
-    if (isListening) stopListening();
+      const normalizeSinhalaPhonetics = (text) => {
+        let lower = text.toLowerCase();
+        lower = lower
+          .replace(/\bare you bhuvan\b/g, 'ayubowan')
+          .replace(/\bayu bowan\b/g, 'ayubowan')
+          .replace(/\bayu bovan\b/g, 'ayubowan')
+          .replace(/\bare you bowen\b/g, 'ayubowan')
+          .replace(/\bhi bowan\b/g, 'ayubowan')
+          .replace(/\bhow bowan\b/g, 'ayubowan')
+          .replace(/\bcoho mother\b/g, 'kohomada')
+          .replace(/\bkoho mother\b/g, 'kohomada')
+          .replace(/\bcoho mada\b/g, 'kohomada')
+          .replace(/\bkohom other\b/g, 'kohomada')
+          .replace(/\bobama komakda\b/g, 'obama komakda') // keep older joke mapping
+          .replace(/\bsuba davasa\b/g, 'suba dawasak')
+          .replace(/\bsuba dawas\b/g, 'suba dawasak')
+          .replace(/\bkoho mada\b/g, 'kohomada');
+        return lower;
+      };
 
-    setIsLoading(true);
-    setReply('Verve AIVoicy is thinking...');
+      const normalizedText = normalizeSinhalaPhonetics(spokenText);
+      if (normalizedText !== spokenText) {
+        console.log('🧠 Sinhala phonetic correction:', spokenText, '→', normalizedText);
+        setTranscript(normalizedText);
+      }
 
-    // 🧠 Run robot + AI concurrently for speed
-    const robotPromise = sendRobotCommand(spokenText);
-    logEvent('ROBOT', `Executing robot command for text: "${spokenText}"`);
+      const textForProcessing = normalizedText;
 
-    // 🔍 Language detection logic (cache-aware)
-    let activeLang = selectedLanguage;
-    let detectedLang = activeLang;
+      try {
+        if (isListening) stopListening();
 
-    if (languageMode === 'auto') {
-      const lastLangJSON = await AsyncStorage.getItem('selectedLanguage');
-      const lastLang = lastLangJSON ? JSON.parse(lastLangJSON) : null;
+        setIsLoading(true);
+        setReply('Verve AIVoicy is thinking...');
+        const robotPromise = sendRobotCommand(textForProcessing);
+        logEvent('ROBOT', `Executing robot command for text: "${textForProcessing}"`);
 
-      // ✅ Reuse language if used within 1 min
-      if (lastLang && Date.now() - lastLang.timestamp < 60000) {
-        detectedLang = lastLang.value;
-        logEvent('LANGUAGE', `♻ Using cached detected language: ${detectedLang}`);
-      } else {
-        const detectPrompt = `
+        let activeLang = selectedLanguage;
+        let detectedLang = activeLang;
+
+        if (languageMode === 'auto') {
+          const lastLangJSON = await AsyncStorage.getItem('selectedLanguage');
+          const lastLang = lastLangJSON ? JSON.parse(lastLangJSON) : null;
+
+          if (lastLang && Date.now() - lastLang.timestamp < 60000) {
+            const quickGuess = detectLanguageFromText(textForProcessing);
+
+            if (quickGuess !== lastLang.value) {
+              detectedLang = quickGuess;
+              logEvent('LANGUAGE', `⚡ Quick regex override: ${quickGuess} (was ${lastLang.value})`);
+            } else {
+              detectedLang = lastLang.value;
+              logEvent('LANGUAGE', `♻ Using cached detected language: ${detectedLang}`);
+            }
+          } else {
+            const detectPrompt = `
 You are a multilingual text detector.
 The user might have spoken in Sinhala, Tamil, Hindi, Malay, Chinese, or English.
 The input may contain distorted English words (e.g., "Obama komakda" = Sinhala "ඔබගේ නම කුමක් ද?").
 Return only JSON:
 {"language": "si-LK", "correctedText": "ඔබගේ නම කුමක් ද?"}
-User said: ${spokenText}`;
+User said: ${textForProcessing}`;
 
-        const correctionResponse = await getGeminiResponse(detectPrompt, 'en-US');
+            const correctionResponse = await getGeminiResponse(detectPrompt, 'en-US');
 
-        try {
-          const parsed = JSON.parse(correctionResponse.match(/\{[\s\S]*\}/)?.[0]);
-          if (parsed?.language && parsed?.correctedText) {
-            detectedLang = parsed.language;
-            setTranscript(parsed.correctedText);
-            console.log('🌐 Verve AIVoicy auto-detected language:', parsed.language);
-            console.log('📝 Corrected text:', parsed.correctedText);
+            try {
+              const parsed = JSON.parse(correctionResponse.match(/\{[\s\S]*\}/)?.[0]);
+              if (parsed?.language && parsed?.correctedText) {
+                const normalizeLangCode = (code) => {
+                  if (code === 'ta-LK') return 'ta-IN';
+                  if (code === 'si-IN') return 'si-LK';
+                  return code;
+                };
 
-            await AsyncStorage.setItem(
-              'selectedLanguage',
-              JSON.stringify({ value: detectedLang, timestamp: Date.now() })
-            );
+                detectedLang = normalizeLangCode(parsed.language);
+                setTranscript(parsed.correctedText);
+                console.log('🌐 Verve AIVoicy auto-detected language:', detectedLang);
+                console.log('📝 Corrected text:', parsed.correctedText);
+
+                await AsyncStorage.setItem(
+                  'selectedLanguage',
+                  JSON.stringify({ value: detectedLang, timestamp: Date.now() })
+                );
+              }
+            } catch (jsonErr) {
+              console.warn('⚠️ Could not parse Gemini detection JSON; using regex fallback.');
+              detectedLang = detectLanguageFromText(textForProcessing);
+            }
           }
-        } catch (jsonErr) {
-          console.warn('⚠️ Could not parse Gemini detection JSON; using regex fallback.');
-          detectedLang = detectLanguageFromText(spokenText);
+
+          activeLang = detectedLang;
+          setSelectedLanguage(activeLang);
         }
+
+        const promptPrefixMap = {
+          'hi-IN': 'Please reply ONLY in Hindi (Devanagari). Example: "कैसे हो?"',
+          'ta-IN': 'Please reply ONLY in Tamil (Tamil script). Example: "வணக்கம், எப்படி இருக்கீங்க?"',
+          'si-LK': 'Please reply ONLY in Sinhala (Sinhala script). Example: "ඔබට කොහොම ද?"',
+          'ms-MY': 'Please reply ONLY in Malay. Example: "Apa khabar?"',
+          'zh-CN': '请只用中文回答。例如："你好，你怎么样？"',
+          'en-US': 'Reply ONLY in English:',
+        };
+
+        const promptPrefix = promptPrefixMap[activeLang] || promptPrefixMap['en-US'];
+        const correctedText = transcript || textForProcessing;
+
+        const [_, aiReply] = await Promise.all([
+          robotPromise,
+          getGeminiResponse(
+            `${promptPrefix}\nUser said: ${correctedText}\nNow respond naturally in that same language — do not describe your response, just say it.`,
+            activeLang
+          ),
+        ]);
+
+        logEvent('AI', `VERVE AIVoicy replied: ${aiReply}`);
+        setReply(aiReply);
+        setIsLoading(false);
+
+        Tts.stop();
+        await Tts.setDefaultLanguage(activeLang);
+        logEvent('TTS', `Speaking AI reply in ${activeLang}`);
+        Tts.speak(aiReply, { androidParams: { KEY_PARAM_STREAM: 'STREAM_MUSIC' } });
+      } catch (err) {
+        console.error('Gemini processing error:', err);
+        const errMsg =
+          selectedLanguage === 'ta-IN'
+            ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
+            : 'सर्वर से कनेक्शन में समस्या हुई।';
+        setReply(errMsg);
+        Tts.speak(errMsg);
       }
-
-      activeLang = detectedLang;
-      setSelectedLanguage(activeLang);
-    }
-
-    // 🧠 Step 2: Get AI reply
-    const promptPrefixMap = {
-      'hi-IN': 'Please reply ONLY in Hindi (Devanagari). Example: "कैसे हो?"',
-      'ta-IN': 'Please reply ONLY in Tamil (Tamil script). Example: "வணக்கம், எப்படி இருக்கீங்க?"',
-      'si-LK': 'Please reply ONLY in Sinhala (Sinhala script). Example: "ඔබට කොහොම ද?"',
-      'ms-MY': 'Please reply ONLY in Malay. Example: "Apa khabar?"',
-      'zh-CN': '请只用中文回答。例如："你好，你怎么样？"',
-      'en-US': 'Reply ONLY in English:',
     };
-
-    const promptPrefix = promptPrefixMap[activeLang] || promptPrefixMap['en-US'];
-    const correctedText = transcript || spokenText;
-
-    // 🚀 Parallelize both actions
-    const [_, aiReply] = await Promise.all([
-      robotPromise,
-      getGeminiResponse(
-        `${promptPrefix}\nUser said: ${correctedText}\nPlease answer naturally.`,
-        activeLang
-      ),
-    ]);
-
-    logEvent('AI', `Gemini replied: ${aiReply}`);
-    setReply(aiReply);
-    setIsLoading(false);
-
-    // 🔊 Step 3: Speak result faster
-    Tts.stop();
-    await Tts.setDefaultLanguage(activeLang);
-    logEvent('TTS', `Speaking AI reply in ${activeLang}`);
-    Tts.speak(aiReply, { androidParams: { KEY_PARAM_STREAM: 'STREAM_MUSIC' } });
-  } catch (err) {
-    console.error('Gemini processing error:', err);
-    const errMsg =
-      selectedLanguage === 'ta-IN'
-        ? 'சர்வர் இணைப்பில் சிக்கல் ஏற்பட்டது.'
-        : 'सर्वर से कनेक्शन में समस्या हुई।';
-    setReply(errMsg);
-    Tts.speak(errMsg);
-  }
-};
 
     let partialBuffer = '';
 
-Voice.onSpeechPartialResults = (e) => {
-  if (e.value && e.value.length > 0) {
-    const current = e.value[e.value.length - 1].trim();
-    if (current && current !== partialBuffer) {
-      partialBuffer = current;
-      setTranscript(partialBuffer);
-      console.log('🌀 Accumulating speech:', partialBuffer);
-    }
-  }
-};
+    Voice.onSpeechPartialResults = (e) => {
+      if (e.value && e.value.length > 0) {
+        const current = e.value[e.value.length - 1].trim();
+        if (current && current !== partialBuffer) {
+          partialBuffer = current;
+          setTranscript(partialBuffer);
+          console.log('🌀 Accumulating speech:', partialBuffer);
+        }
+      }
+    };
 
     Voice.onSpeechError = (e) => {
       console.log('onSpeechError full object:', JSON.stringify(e, null, 2));
@@ -480,9 +526,9 @@ Voice.onSpeechPartialResults = (e) => {
   // Start Listening for Speech
   const startListening = async () => {
     console.log('StartListening called');
-    const currentLang =  languageMode === 'auto'
-    ? selectedLanguage  
-    : selectedLanguage;
+    const currentLang = languageMode === 'auto'
+      ? selectedLanguage
+      : selectedLanguage;
 
     const hasPermission = await requestMicPermission();
     if (!hasPermission) return;
@@ -496,19 +542,18 @@ Voice.onSpeechPartialResults = (e) => {
 
       setIsListening(true);
 
-    // 🌐 Dynamic language start (for Auto Mode)
-    if (languageMode === 'auto') {
-      const lastLang = await AsyncStorage.getItem('selectedLanguage');
-      if (lastLang) {
-        console.log(`🌐 Using last detected language: ${lastLang}`);
-        await Voice.start(lastLang);
+      if (languageMode === 'auto') {
+        const lastLang = await AsyncStorage.getItem('selectedLanguage');
+        if (lastLang) {
+          console.log(`🌐 Using last detected language: ${lastLang}`);
+          await Voice.start(lastLang);
+        } else {
+          console.log('🌍 Defaulting to English (en-US)');
+          await Voice.start('en-US');
+        }
       } else {
-        console.log('🌍 Defaulting to English (en-US)');
-        await Voice.start('en-US');
+        await Voice.start(selectedLanguage);
       }
-    } else {
-      await Voice.start(selectedLanguage);
-    }
 
 
       logEvent('VOICE', `Voice recognition started in ${currentLang}`);
@@ -579,38 +624,36 @@ Voice.onSpeechPartialResults = (e) => {
   const status = getStatusConfig();
 
   const detectLanguageFromText = (text = '') => {
-    const lower = text.toLowerCase();
+    const lower = text.toLowerCase().trim();
 
     // --- Tamil script or keywords ---
     if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN';
-    if (/\b(vanakkam|enna|epdi|solra|ungal|paaru|seri|podu|pa|da|illai|ama)\b/.test(lower))
+    if (/\b(vanakkam|vannakam|vaṇakkam|epdi|enna|ungal|seri|podu|illai|sapdu|eppadi|irukke)\b/.test(lower))
       return 'ta-IN';
 
     // --- Hindi script or keywords ---
     if (/[\u0900-\u097F]/.test(text)) return 'hi-IN';
-    if (/\b(namaste|kaise|hai|nahi|karo|batao|tum|mera|aap|haan|nahin|karna|jao|banao)\b/.test(lower))
+    if (/\b(namaste|kaise|hai|nahi|aap|tum|mera|batao|karna|banao|haan|nahin|achha|theek)\b/.test(lower))
       return 'hi-IN';
 
     // --- Sinhala script or keywords ---
     if (/[\u0D80-\u0DFF]/.test(text)) return 'si-LK';
-    if (/\b(koho|kohomada|kohomadha|kohomda|mage|hondai|karanna|nadda|hari|eka|kavada|suba|ayubowan|oya|thiyenawa|kumakda|komakda|obage)\b/.test(lower))
-      return 'si-LK';
-    // Handle common misheard English versions of Sinhala
-    if (/\b(obama|coho|komakda|kumakda|kobama|kobam|obama komakda|coho mother|kohomother|kaho mother)\b/.test(lower))
+
+    // Sinhala transliterated (Romanized Sinhala)
+    if (/\b(ayubowan|ayuboan|ayubowen|aybowan|aybowen|kohomada|kohomadha|kohomda|kohomada|mage|hondai|hari|suba|dawasak|obage|thiyenawa|komakda|kumakda|obama komakda|kohomother|kobama)\b/.test(lower))
       return 'si-LK';
 
-
-    // --- Malay (Roman script only, common words) ---
+    // --- Malay ---
     if (/\b(selamat|apa|khabar|baik|terima|kasih|makan|minum|nama|anda|saya|boleh)\b/.test(lower))
       return 'ms-MY';
 
-    // --- Chinese script or pinyin (simplified) ---
+    // --- Chinese ---
     if (/[\u4E00-\u9FFF]/.test(text)) return 'zh-CN';
     if (/\b(nihao|xiexie|zaijian|hao|zhongguo|pengyou|shuo|hen|de)\b/.test(lower))
       return 'zh-CN';
 
-    // --- English script or keywords ---
-    if (/\b(hello|hi|how|thanks|good|morning|evening|yes|no|please|okay)\b/.test(lower))
+    // --- English ---
+    if (/\b(hello|hi|how|thanks|good|morning|evening|yes|no|please|okay|you|are|fine|doing)\b/.test(lower))
       return 'en-US';
 
     // --- Default fallback ---

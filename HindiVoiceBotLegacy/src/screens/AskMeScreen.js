@@ -5,6 +5,7 @@ import { getGeminiResponse } from '../services/geminiService';
 import { sendRobotCommand } from '../services/RobotMotionService';
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import SettingsModal from '../components/SettingsModal';
+import { supabase } from '../services/supabaseClient';
 
 import {
   SafeAreaView,
@@ -97,6 +98,33 @@ export default function AskMeScreen() {
   const statusPulse = useRef(new Animated.Value(1)).current;
   const waveAnims = useRef([...Array(5)].map(() => new Animated.Value(0))).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const [userInitials, setUserInitials] = useState('');
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Fetch logged-in user from Supabase and set their initials for display
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const name = user.user_metadata?.full_name || user.email;
+        const initials = name
+          .split(' ')
+          .map(n => n[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2);
+        setUserInitials(initials);
+      }
+    };
+    loadUser();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserInitials('');
+    setShowUserMenu(false);
+    Alert.alert('Logged Out', 'You have been logged out successfully.');
+  };
 
   // Pulse animation for listening state
   useEffect(() => {
@@ -242,7 +270,7 @@ export default function AskMeScreen() {
           } catch {
             console.warn('⚠️ Invalid JSON found in AsyncStorage. Resetting key.');
             await AsyncStorage.removeItem('selectedLanguage');
-            savedLang = savedLangJSON; 
+            savedLang = savedLangJSON;
           }
         }
 
@@ -680,15 +708,35 @@ User said: ${textForProcessing}`;
         </View>
         <View style={styles.headerRight}>
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.signInButton}
-              onPress={handleSignIn}
-              activeOpacity={0.8}
-            >
-              <View style={styles.signInGradient}>
-                <Text style={styles.signInText}>Sign In</Text>
+            {userInitials ? (
+              <View>
+                <TouchableOpacity
+                  style={styles.userBadge}
+                  onPress={() => setShowUserMenu(prev => !prev)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.userInitials}>{userInitials}</Text>
+                </TouchableOpacity>
+
+                {showUserMenu && (
+                  <View style={styles.userMenu}>
+                    <TouchableOpacity onPress={handleLogout} style={styles.userMenuItem}>
+                      <Text style={styles.userMenuText}>Logout</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.signInButton}
+                onPress={() => Alert.alert('Redirect', 'Go to Sign In screen')}
+                activeOpacity={0.8}
+              >
+                <View style={styles.signInGradient}>
+                  <Text style={styles.signInText}>Sign In</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.settingsButton}
               onPress={() => setShowSettings(true)}
@@ -1486,6 +1534,55 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
+  },
+
+  userBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6366f1',
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+
+  userInitials: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.5,
+  },
+
+  userMenu: {
+    position: 'absolute',
+    top: 50,
+    right: 0,
+    backgroundColor: '#1f1f2e',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 8,
+    width: 120,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 1000,
+  },
+
+  userMenuItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+
+  userMenuText: {
+    color: '#f1f5f9',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 
 });

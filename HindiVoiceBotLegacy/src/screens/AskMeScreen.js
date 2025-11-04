@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import Voice from '@react-native-voice/voice';
 import Tts from 'react-native-tts';
 import { getGeminiResponse } from '../services/geminiService';
@@ -93,6 +94,7 @@ export default function AskMeScreen() {
   const [languageMode, setLanguageMode] = useState('manual');
   const [languageReady, setLanguageReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const navigation = useNavigation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const statusPulse = useRef(new Animated.Value(1)).current;
@@ -729,7 +731,7 @@ User said: ${textForProcessing}`;
             ) : (
               <TouchableOpacity
                 style={styles.signInButton}
-                onPress={() => Alert.alert('Redirect', 'Go to Sign In screen')}
+                onPress={() => navigation.navigate('SignIn')}
                 activeOpacity={0.8}
               >
                 <View style={styles.signInGradient}>
